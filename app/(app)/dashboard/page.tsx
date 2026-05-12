@@ -193,8 +193,8 @@ export default function DashboardPage() {
                 />
                 <YAxis hide />
                 <Tooltip
-                  formatter={(value: number) => [
-                    formatCurrency(value),
+                  formatter={(value) => [
+                    formatCurrency(Number(value)),
                     "Gasto",
                   ]}
                   labelStyle={{ color: "#27272a", fontWeight: 600 }}
