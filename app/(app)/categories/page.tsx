@@ -1,0 +1,230 @@
+"use client";
+
+import { useState } from "react";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { mockCategorySummaries, mockTransactions } from "@/lib/mock-data";
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/constants";
+import { formatCurrency } from "@/lib/utils";
+
+interface CategoryDetailProps {
+  categoryId: string;
+  categoryName: string;
+  categoryIcon: string;
+  categoryColor: string;
+  total: number;
+  count: number;
+}
+
+function CategoryGrid({
+  categories,
+  type,
+  onSelect,
+}: {
+  categories: typeof EXPENSE_CATEGORIES;
+  type: "expense" | "income";
+  onSelect: (detail: CategoryDetailProps) => void;
+}) {
+  const summaries = mockCategorySummaries;
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {categories.map((cat) => {
+        const summary = summaries.find((s) => s.categoryId === cat.id);
+        const txCount = mockTransactions.filter(
+          (t) => t.categoryId === cat.id && t.type === type
+        ).length;
+
+        return (
+          <button
+            key={cat.id}
+            onClick={() =>
+              onSelect({
+                categoryId: cat.id,
+                categoryName: cat.name,
+                categoryIcon: cat.icon,
+                categoryColor: cat.color,
+                total: summary?.total ?? 0,
+                count: txCount,
+              })
+            }
+            className="bg-white rounded-2xl p-4 border border-zinc-100 shadow-sm text-left hover:shadow-md active:scale-[0.97] transition-all"
+          >
+            <div
+              className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl mb-3"
+              style={{ backgroundColor: `${cat.color}20` }}
+            >
+              {cat.icon}
+            </div>
+            <p className="text-sm font-semibold text-zinc-800 mb-0.5">
+              {cat.name}
+            </p>
+            {summary ? (
+              <p
+                className="text-sm font-bold"
+                style={{ color: cat.color }}
+              >
+                {formatCurrency(summary.total)}
+              </p>
+            ) : (
+              <p className="text-xs text-zinc-400">Sin movimientos</p>
+            )}
+            {txCount > 0 && (
+              <p className="text-xs text-zinc-400 mt-0.5">
+                {txCount} movimiento{txCount !== 1 ? "s" : ""}
+              </p>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function CategoriesPage() {
+  const [selectedCategory, setSelectedCategory] =
+    useState<CategoryDetailProps | null>(null);
+
+  return (
+    <div className="flex flex-col">
+      {/* Header */}
+      <div className="px-5 pt-12 pb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-zinc-800">Categorías</h1>
+        <Button size="sm" variant="outline" className="gap-1.5">
+          <Plus className="size-4" />
+          Nueva
+        </Button>
+      </div>
+
+      {/* Tabs */}
+      <div className="px-5">
+        <Tabs defaultValue="expenses">
+          <TabsList className="w-full mb-5">
+            <TabsTrigger value="expenses" className="flex-1">
+              💸 Gastos
+            </TabsTrigger>
+            <TabsTrigger value="income" className="flex-1">
+              💰 Ingresos
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="expenses">
+            <CategoryGrid
+              categories={EXPENSE_CATEGORIES}
+              type="expense"
+              onSelect={setSelectedCategory}
+            />
+          </TabsContent>
+
+          <TabsContent value="income">
+            <CategoryGrid
+              categories={INCOME_CATEGORIES}
+              type="income"
+              onSelect={setSelectedCategory}
+            />
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Category Detail Dialog */}
+      <Dialog
+        open={!!selectedCategory}
+        onOpenChange={(open) => !open && setSelectedCategory(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Detalle de categoría</DialogTitle>
+          </DialogHeader>
+          {selectedCategory && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
+                  style={{
+                    backgroundColor: `${selectedCategory.categoryColor}20`,
+                  }}
+                >
+                  {selectedCategory.categoryIcon}
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-zinc-800">
+                    {selectedCategory.categoryName}
+                  </p>
+                  <p className="text-sm text-zinc-500">
+                    {selectedCategory.count} movimiento
+                    {selectedCategory.count !== 1 ? "s" : ""} este mes
+                  </p>
+                </div>
+              </div>
+
+              <div
+                className="rounded-2xl p-5 text-center"
+                style={{
+                  backgroundColor: `${selectedCategory.categoryColor}10`,
+                }}
+              >
+                <p className="text-xs text-zinc-500 mb-1">
+                  Total este mes
+                </p>
+                <p
+                  className="text-3xl font-bold"
+                  style={{ color: selectedCategory.categoryColor }}
+                >
+                  {selectedCategory.total > 0
+                    ? formatCurrency(selectedCategory.total)
+                    : "S/ 0.00"}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-zinc-700">
+                  Movimientos recientes
+                </p>
+                {mockTransactions
+                  .filter((t) => t.categoryId === selectedCategory.categoryId)
+                  .slice(0, 3)
+                  .map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="flex justify-between items-center py-2 border-b border-zinc-50"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-zinc-800">
+                          {tx.description}
+                        </p>
+                        <p className="text-xs text-zinc-400">{tx.date}</p>
+                      </div>
+                      <p
+                        className={`text-sm font-bold ${
+                          tx.type === "expense"
+                            ? "text-rose-600"
+                            : "text-emerald-600"
+                        }`}
+                      >
+                        {tx.type === "expense" ? "- " : "+ "}
+                        {formatCurrency(tx.amount)}
+                      </p>
+                    </div>
+                  ))}
+                {mockTransactions.filter(
+                  (t) => t.categoryId === selectedCategory.categoryId
+                ).length === 0 && (
+                  <p className="text-sm text-zinc-400 text-center py-3">
+                    Sin movimientos en esta categoría
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
