@@ -1,4 +1,4 @@
-# Finanzas de Sofi
+# Finanzas de Juani
 
 App de finanzas personales — mobile-first, construida con Next.js 14, TypeScript y Tailwind CSS.
 
