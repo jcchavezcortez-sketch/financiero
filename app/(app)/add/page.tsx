@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { X, CheckCircle } from "lucide-react";
+import { X, CheckCircle, Mic } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -109,12 +109,21 @@ export default function AddPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-12 pb-4">
         <h1 className="text-xl font-bold text-zinc-800">Agregar movimiento</h1>
-        <Link
-          href="/dashboard"
-          className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-zinc-100 transition-colors"
-        >
-          <X className="size-5 text-zinc-500" />
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/voice"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-100 text-violet-700 text-xs font-semibold hover:bg-violet-200 transition-colors"
+          >
+            <Mic className="size-3.5" />
+            Por voz
+          </Link>
+          <Link
+            href="/dashboard"
+            className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-zinc-100 transition-colors"
+          >
+            <X className="size-5 text-zinc-500" />
+          </Link>
+        </div>
       </div>
 
       {/* Type Toggle */}

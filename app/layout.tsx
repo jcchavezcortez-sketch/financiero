@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Finanzas de Sofi",
+  title: "Finanzas de Juani",
   description: "Tu dinero, tu control — gestiona tus finanzas personales",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Finanzas de Sofi",
+    title: "Finanzas de Juani",
   },
 };
 

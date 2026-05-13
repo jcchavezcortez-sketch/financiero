@@ -121,7 +121,7 @@ export default function OnboardingPage() {
               <Label htmlFor="name">Tu nombre</Label>
               <Input
                 id="name"
-                placeholder="Ej. Sofi, María, Lucía..."
+                placeholder="Ej. Juani, María, Lucía..."
                 autoFocus
                 {...step1Form.register("name")}
               />

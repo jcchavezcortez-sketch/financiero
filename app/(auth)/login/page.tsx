@@ -43,7 +43,7 @@ export default function LoginPage() {
         <div className="text-center mb-10">
           <div className="text-7xl mb-4 animate-pulse-gentle">💜</div>
           <h1 className="text-3xl font-bold text-zinc-800 mb-2">
-            Finanzas de Sofi
+            Finanzas de Juani
           </h1>
           <p className="text-zinc-500 text-base">
             Tu dinero, tu control
@@ -57,7 +57,7 @@ export default function LoginPage() {
             <Input
               id="email"
               type="email"
-              placeholder="sofi@email.com"
+              placeholder="juani@email.com"
               autoComplete="email"
               {...register("email")}
             />

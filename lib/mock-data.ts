@@ -10,8 +10,8 @@ import type {
 
 export const mockUser: User = {
   id: "user-1",
-  name: "Sofi",
-  email: "sofi@email.com",
+  name: "Juani",
+  email: "juani@email.com",
   currency: "PEN",
   savingsGoal: 500,
   payday: 15,
