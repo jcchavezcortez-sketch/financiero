@@ -11,13 +11,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 
-const loginSchema = z.object({
+const registerSchema = z.object({
   email: z.string().min(1, "El correo es requerido").email("Correo inválido"),
-  password: z.string().min(6, "Mínimo 6 caracteres"),
+  password: z.string().min(8, "Mínimo 8 caracteres"),
+  confirm: z.string().min(1, "Confirma tu contraseña"),
+}).refine((d) => d.password === d.confirm, {
+  message: "Las contraseñas no coinciden",
+  path: ["confirm"],
 });
-type LoginForm = z.infer<typeof loginSchema>;
+type RegisterForm = z.infer<typeof registerSchema>;
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
   const [serverError, setServerError] = useState("");
 
@@ -25,20 +29,20 @@ export default function LoginPage() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
+  } = useForm<RegisterForm>({ resolver: zodResolver(registerSchema) });
 
-  const onSubmit = async (data: LoginForm) => {
+  const onSubmit = async (data: RegisterForm) => {
     setServerError("");
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
     });
     if (error) {
-      setServerError("Correo o contraseña incorrectos");
+      setServerError(error.message);
       return;
     }
-    router.push("/dashboard");
+    router.push("/onboarding");
     router.refresh();
   };
 
@@ -46,9 +50,9 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gradient-to-b from-violet-50 to-stone-50 flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
-          <div className="text-7xl mb-4 animate-pulse-gentle">💜</div>
-          <h1 className="text-3xl font-bold text-zinc-800 mb-2">Finanzas de Juani</h1>
-          <p className="text-zinc-500 text-base">Tu dinero, tu control</p>
+          <div className="text-7xl mb-4">✨</div>
+          <h1 className="text-3xl font-bold text-zinc-800 mb-2">Crear cuenta</h1>
+          <p className="text-zinc-500 text-base">Empieza a controlar tu dinero</p>
         </div>
 
         <div className="bg-white rounded-3xl shadow-md p-6 space-y-5">
@@ -60,8 +64,14 @@ export default function LoginPage() {
 
           <div className="space-y-1.5">
             <Label htmlFor="password">Contraseña</Label>
-            <Input id="password" type="password" placeholder="••••••••" autoComplete="current-password" {...register("password")} />
+            <Input id="password" type="password" placeholder="Mínimo 8 caracteres" autoComplete="new-password" {...register("password")} />
             {errors.password && <p className="text-xs text-rose-500">{errors.password.message}</p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="confirm">Confirmar contraseña</Label>
+            <Input id="confirm" type="password" placeholder="Repite tu contraseña" autoComplete="new-password" {...register("confirm")} />
+            {errors.confirm && <p className="text-xs text-rose-500">{errors.confirm.message}</p>}
           </div>
 
           {serverError && (
@@ -71,17 +81,13 @@ export default function LoginPage() {
           )}
 
           <Button className="w-full" size="lg" onClick={handleSubmit(onSubmit)} disabled={isSubmitting}>
-            {isSubmitting ? "Entrando..." : "Entrar"}
+            {isSubmitting ? "Creando cuenta..." : "Crear cuenta"}
           </Button>
         </div>
 
         <p className="text-center mt-5 text-sm text-zinc-500">
-          ¿No tienes cuenta?{" "}
-          <Link href="/register" className="text-violet-600 font-semibold hover:underline">Regístrate</Link>
-        </p>
-
-        <p className="text-center text-xs text-zinc-400 mt-8 px-4 leading-relaxed">
-          🔒 Tus datos se guardan de forma segura y privada.
+          ¿Ya tienes cuenta?{" "}
+          <Link href="/login" className="text-violet-600 font-semibold hover:underline">Inicia sesión</Link>
         </p>
       </div>
     </div>

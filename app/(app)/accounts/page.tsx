@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -26,6 +26,13 @@ import AccountCard from "@/components/shared/AccountCard";
 import { mockAccounts } from "@/lib/mock-data";
 import { ACCOUNT_TYPES } from "@/lib/constants";
 import { formatCurrency } from "@/lib/utils";
+import { getAccounts, insertAccount } from "@/lib/supabase/queries";
+import type { Account } from "@/types";
+
+const isSupabaseConfigured = !!(
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 const addAccountSchema = z.object({
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
@@ -41,6 +48,8 @@ type AddAccountForm = z.infer<typeof addAccountSchema>;
 export default function AccountsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const {
     register,
@@ -52,16 +61,40 @@ export default function AccountsPage() {
     resolver: zodResolver(addAccountSchema),
   });
 
-  const totalBalance = mockAccounts.reduce((s, a) => s + a.balance, 0);
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
+    getAccounts().then((data) => {
+      setAccounts(data as unknown as Account[]);
+      setLoading(false);
+    });
+  }, []);
 
-  const onSubmit = async (_data: AddAccountForm) => {
-    await new Promise((r) => setTimeout(r, 500));
-    setSubmitted(true);
-    setTimeout(() => {
-      setShowAdd(false);
-      setSubmitted(false);
-      reset();
-    }, 1500);
+  const displayAccounts = isSupabaseConfigured ? accounts : mockAccounts;
+  const totalBalance = displayAccounts.reduce((s, a) => s + a.balance, 0);
+
+  const onSubmit = async (data: AddAccountForm) => {
+    if (!isSupabaseConfigured) {
+      await new Promise((r) => setTimeout(r, 500));
+      setSubmitted(true);
+      setTimeout(() => { setShowAdd(false); setSubmitted(false); reset(); }, 1500);
+      return;
+    }
+    try {
+      await insertAccount({
+        name: data.name,
+        type: data.type,
+        balance: Number(data.balance),
+      });
+      const updated = await getAccounts();
+      setAccounts(updated as unknown as Account[]);
+      setSubmitted(true);
+      setTimeout(() => { setShowAdd(false); setSubmitted(false); reset(); }, 1500);
+    } catch {
+      // silently handle
+    }
   };
 
   return (
@@ -87,16 +120,28 @@ export default function AccountsPage() {
           </p>
           <p className="text-3xl font-bold">{formatCurrency(totalBalance)}</p>
           <p className="text-violet-300 text-sm mt-1">
-            {mockAccounts.length} cuentas activas
+            {displayAccounts.length} cuentas activas
           </p>
         </div>
       </div>
 
       {/* Account Cards */}
       <div className="px-5 space-y-3 mb-6">
-        {mockAccounts.map((account) => (
-          <AccountCard key={account.id} account={account} />
-        ))}
+        {loading ? (
+          Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="h-24 bg-zinc-100 rounded-3xl animate-pulse" />
+          ))
+        ) : (
+          displayAccounts.map((account) => (
+            <AccountCard key={account.id} account={account} />
+          ))
+        )}
+        {!loading && displayAccounts.length === 0 && (
+          <div className="text-center py-10">
+            <p className="text-3xl mb-2">🏦</p>
+            <p className="text-zinc-500 text-sm">Aún no tienes cuentas. ¡Agrega una!</p>
+          </div>
+        )}
       </div>
 
       {/* Add Account Sheet */}

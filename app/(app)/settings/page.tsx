@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -38,6 +38,19 @@ import { Separator } from "@/components/ui/separator";
 import { mockUser } from "@/lib/mock-data";
 import { CURRENCIES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import {
+  getCurrentUser,
+  getProfile,
+  getUserSettings,
+  upsertProfile,
+  upsertUserSettings,
+  signOut,
+} from "@/lib/supabase/queries";
+
+const isSupabaseConfigured = !!(
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 const profileSchema = z.object({
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
@@ -63,6 +76,8 @@ export default function SettingsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState(mockUser.email);
+  const [userName, setUserName] = useState(mockUser.name);
 
   const profileForm = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
@@ -80,29 +95,83 @@ export default function SettingsPage() {
     },
   });
 
-  const saveProfile = profileForm.handleSubmit(async () => {
-    await new Promise((r) => setTimeout(r, 400));
-    setSaved("profile");
-    setTimeout(() => setSaved(null), 2000);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    Promise.all([getCurrentUser(), getProfile(), getUserSettings()]).then(
+      ([user, profile, settings]) => {
+        if (user?.email) setUserEmail(user.email);
+        if (profile) {
+          setUserName(profile.name);
+          profileForm.reset({
+            name: profile.name,
+            currency: profile.currency ?? "PEN",
+            payday: profile.payday ? String(profile.payday) : "1",
+          });
+        }
+        if (settings?.savings_goal) {
+          goalsForm.reset({ savingsGoal: String(settings.savings_goal) });
+        }
+      }
+    );
+  }, []);
+
+  const saveProfile = profileForm.handleSubmit(async (data) => {
+    if (!isSupabaseConfigured) {
+      await new Promise((r) => setTimeout(r, 400));
+      setSaved("profile");
+      setTimeout(() => setSaved(null), 2000);
+      return;
+    }
+    try {
+      await upsertProfile({
+        name: data.name,
+        currency: data.currency,
+        payday: Number(data.payday),
+      });
+      setUserName(data.name);
+      setSaved("profile");
+      setTimeout(() => setSaved(null), 2000);
+    } catch {
+      // silently handle
+    }
   });
 
-  const saveGoals = goalsForm.handleSubmit(async () => {
-    await new Promise((r) => setTimeout(r, 400));
-    setSaved("goals");
-    setTimeout(() => setSaved(null), 2000);
+  const saveGoals = goalsForm.handleSubmit(async (data) => {
+    if (!isSupabaseConfigured) {
+      await new Promise((r) => setTimeout(r, 400));
+      setSaved("goals");
+      setTimeout(() => setSaved(null), 2000);
+      return;
+    }
+    try {
+      await upsertUserSettings({ savings_goal: Number(data.savingsGoal) });
+      setSaved("goals");
+      setTimeout(() => setSaved(null), 2000);
+    } catch {
+      // silently handle
+    }
   });
 
   const handleExport = () => {
-    const data = "fecha,descripcion,categoria,cuenta,tipo,monto\n15/05/2025,Sueldo,Sueldo,BCP,ingreso,3200.00\n";
+    const data = "fecha,descripcion,categoria,cuenta,tipo,monto\n";
     const blob = new Blob([data], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "finanzas-sofi-export.csv";
+    link.download = "finanzas-juani-export.csv";
     link.click();
   };
 
-  const initials = mockUser.name
+  const handleLogout = async () => {
+    setShowLogoutDialog(false);
+    if (isSupabaseConfigured) {
+      await signOut();
+    }
+    router.push("/login");
+    router.refresh();
+  };
+
+  const initials = userName
     .split(" ")
     .map((n) => n[0])
     .join("")
@@ -125,8 +194,8 @@ export default function SettingsPage() {
             </AvatarFallback>
           </Avatar>
           <div>
-            <p className="text-lg font-bold text-zinc-800">{mockUser.name}</p>
-            <p className="text-sm text-zinc-500">{mockUser.email}</p>
+            <p className="text-lg font-bold text-zinc-800">{userName}</p>
+            <p className="text-sm text-zinc-500">{userEmail}</p>
           </div>
         </div>
       </div>
@@ -152,7 +221,7 @@ export default function SettingsPage() {
           <div className="space-y-1.5">
             <Label>Moneda principal</Label>
             <Select
-              defaultValue={mockUser.currency}
+              defaultValue={profileForm.getValues("currency")}
               onValueChange={(v) => profileForm.setValue("currency", v)}
             >
               <SelectTrigger>
@@ -169,12 +238,7 @@ export default function SettingsPage() {
           </div>
           <div className="space-y-1.5">
             <Label>Día de sueldo</Label>
-            <Input
-              type="number"
-              min={1}
-              max={31}
-              {...profileForm.register("payday")}
-            />
+            <Input type="number" min={1} max={31} {...profileForm.register("payday")} />
             {profileForm.formState.errors.payday && (
               <p className="text-xs text-rose-500">
                 {profileForm.formState.errors.payday.message}
@@ -186,7 +250,11 @@ export default function SettingsPage() {
             onClick={saveProfile}
             disabled={profileForm.formState.isSubmitting}
           >
-            {saved === "profile" ? "✓ Guardado" : profileForm.formState.isSubmitting ? "Guardando..." : "Guardar cambios"}
+            {saved === "profile"
+              ? "✓ Guardado"
+              : profileForm.formState.isSubmitting
+              ? "Guardando..."
+              : "Guardar cambios"}
           </Button>
         </div>
       </div>
@@ -223,7 +291,11 @@ export default function SettingsPage() {
             onClick={saveGoals}
             disabled={goalsForm.formState.isSubmitting}
           >
-            {saved === "goals" ? "✓ Guardado" : goalsForm.formState.isSubmitting ? "Guardando..." : "Guardar meta"}
+            {saved === "goals"
+              ? "✓ Guardado"
+              : goalsForm.formState.isSubmitting
+              ? "Guardando..."
+              : "Guardar meta"}
           </Button>
         </div>
       </div>
@@ -279,9 +351,8 @@ export default function SettingsPage() {
         </div>
         <div className="bg-white rounded-2xl border border-zinc-100 p-4">
           <p className="text-sm text-zinc-600 leading-relaxed">
-            🔒 Tus datos financieros se guardan de forma local y segura. No
-            compartimos tu información con terceros. Solo tú tienes acceso a
-            tus movimientos y saldos.
+            🔒 Tus datos financieros están protegidos con Row Level Security en
+            Supabase. Solo tú tienes acceso a tus movimientos y saldos.
           </p>
         </div>
       </div>
@@ -305,7 +376,7 @@ export default function SettingsPage() {
             <DialogTitle>¿Eliminar todos los datos?</DialogTitle>
             <DialogDescription>
               Esta acción es irreversible. Se eliminarán todas tus cuentas,
-              movimientos y configuraciones. ¿Estás segura?
+              movimientos y configuraciones. ¿Estás seguro?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -331,21 +402,14 @@ export default function SettingsPage() {
           <DialogHeader>
             <DialogTitle>Cerrar sesión</DialogTitle>
             <DialogDescription>
-              ¿Segura que quieres salir de tu cuenta?
+              ¿Seguro que quieres salir de tu cuenta?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLogoutDialog(false)}>
               Cancelar
             </Button>
-            <Button
-              onClick={() => {
-                setShowLogoutDialog(false);
-                router.push("/login");
-              }}
-            >
-              Cerrar sesión
-            </Button>
+            <Button onClick={handleLogout}>Cerrar sesión</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
