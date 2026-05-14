@@ -17,8 +17,15 @@ export const mockUser: User = {
   payday: 15,
 };
 
+const mockAccountDefaults = {
+  initial_balance: 0,
+  include_in_available_balance: true,
+  include_in_net_worth: true,
+};
+
 export const mockAccounts: Account[] = [
   {
+    ...mockAccountDefaults,
     id: "acc-1",
     name: "BCP Sueldo",
     type: "checking",
@@ -28,6 +35,7 @@ export const mockAccounts: Account[] = [
     icon: "🏦",
   },
   {
+    ...mockAccountDefaults,
     id: "acc-2",
     name: "Ahorros BCP",
     type: "savings",
@@ -37,6 +45,7 @@ export const mockAccounts: Account[] = [
     icon: "🐷",
   },
   {
+    ...mockAccountDefaults,
     id: "acc-3",
     name: "Yape",
     type: "digital",
@@ -46,6 +55,7 @@ export const mockAccounts: Account[] = [
     icon: "💜",
   },
   {
+    ...mockAccountDefaults,
     id: "acc-4",
     name: "Efectivo",
     type: "cash",

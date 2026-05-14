@@ -1,11 +1,14 @@
 import { createClient } from "./client";
 import type { Database } from "@/types/database";
+import { getFinancialOverview } from "@/lib/finance";
+import type { Account, Liability, FinancialOverview } from "@/types";
 
 type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
 type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 type UserSettingsRow = Database["public"]["Tables"]["user_settings"]["Row"];
+type LiabilityRow = Database["public"]["Tables"]["liabilities"]["Row"];
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -42,9 +45,7 @@ export async function upsertProfile(values: {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("No autenticado");
-  return supabase
-    .from("profiles")
-    .upsert({ user_id: user.id, ...values });
+  return supabase.from("profiles").upsert({ user_id: user.id, ...values });
 }
 
 // ── User settings ─────────────────────────────────────────────────────────────
@@ -68,9 +69,7 @@ export async function upsertUserSettings(values: {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("No autenticado");
-  return supabase
-    .from("user_settings")
-    .upsert({ user_id: user.id, ...values });
+  return supabase.from("user_settings").upsert({ user_id: user.id, ...values });
 }
 
 // ── Accounts ──────────────────────────────────────────────────────────────────
@@ -92,14 +91,41 @@ export async function insertAccount(values: {
   name: string;
   type: string;
   balance: number;
+  initial_balance?: number;
   currency?: string;
   color?: string;
   icon?: string;
+  include_in_available_balance?: boolean;
+  include_in_net_worth?: boolean;
+  institution_name?: string | null;
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("No autenticado");
-  return supabase.from("accounts").insert({ user_id: user.id, ...values });
+  const payload = {
+    user_id: user.id,
+    ...values,
+    initial_balance: values.initial_balance ?? values.balance,
+  };
+  return supabase.from("accounts").insert(payload);
+}
+
+export async function updateAccount(
+  id: string,
+  values: Partial<{
+    name: string;
+    type: string;
+    balance: number;
+    currency: string;
+    color: string;
+    icon: string;
+    include_in_available_balance: boolean;
+    include_in_net_worth: boolean;
+    institution_name: string | null;
+  }>
+) {
+  const supabase = createClient();
+  return supabase.from("accounts").update(values).eq("id", id);
 }
 
 export async function deleteAccount(id: string) {
@@ -107,9 +133,101 @@ export async function deleteAccount(id: string) {
   return supabase.from("accounts").update({ is_active: false }).eq("id", id);
 }
 
+// ── Liabilities ───────────────────────────────────────────────────────────────
+
+export async function getLiabilities(
+  status?: "active" | "paid"
+): Promise<LiabilityRow[]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  let query = supabase
+    .from("liabilities")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+  if (status) query = query.eq("status", status);
+  const { data } = await query;
+  return data ?? [];
+}
+
+export async function insertLiability(values: {
+  liability_type: string;
+  name: string;
+  creditor_name?: string | null;
+  original_amount?: number | null;
+  current_balance: number;
+  due_date?: string | null;
+  minimum_payment?: number | null;
+  notes?: string | null;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+  return supabase.from("liabilities").insert({ user_id: user.id, ...values });
+}
+
+export async function updateLiability(
+  id: string,
+  values: Partial<{
+    liability_type: string;
+    name: string;
+    creditor_name: string | null;
+    original_amount: number | null;
+    current_balance: number;
+    due_date: string | null;
+    minimum_payment: number | null;
+    notes: string | null;
+    status: string;
+  }>
+) {
+  const supabase = createClient();
+  return supabase.from("liabilities").update(values).eq("id", id);
+}
+
+export async function deleteLiability(id: string) {
+  const supabase = createClient();
+  return supabase.from("liabilities").delete().eq("id", id);
+}
+
+// ── Financial snapshots ───────────────────────────────────────────────────────
+
+export async function insertFinancialSnapshot(values: {
+  liquid_available_amount: number;
+  protected_savings_amount: number;
+  total_liabilities_amount: number;
+  net_worth_amount: number;
+  notes?: string | null;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+  return supabase.from("financial_snapshots").insert({ user_id: user.id, ...values });
+}
+
+// ── Financial overview ────────────────────────────────────────────────────────
+
+export async function getFinancialOverviewData(): Promise<{
+  accounts: AccountRow[];
+  liabilities: LiabilityRow[];
+  overview: FinancialOverview;
+}> {
+  const [accounts, liabilities] = await Promise.all([
+    getAccounts(),
+    getLiabilities("active"),
+  ]);
+  const overview = getFinancialOverview(
+    accounts as unknown as Account[],
+    liabilities as unknown as Liability[]
+  );
+  return { accounts, liabilities, overview };
+}
+
 // ── Categories ────────────────────────────────────────────────────────────────
 
-export async function getCategories(type?: "expense" | "income"): Promise<CategoryRow[]> {
+export async function getCategories(
+  type?: "expense" | "income"
+): Promise<CategoryRow[]> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
@@ -172,16 +290,12 @@ export async function getTransactions(filters?: {
 
   if (filters?.month !== undefined && filters?.year !== undefined) {
     const start = `${filters.year}-${String(filters.month + 1).padStart(2, "0")}-01`;
-    const end = new Date(filters.year, filters.month + 1, 0)
-      .toISOString()
-      .split("T")[0];
+    const end = new Date(filters.year, filters.month + 1, 0).toISOString().split("T")[0];
     query = query.gte("date", start).lte("date", end);
   }
   if (filters?.categoryId) query = query.eq("category_id", filters.categoryId);
   if (filters?.accountId) query = query.eq("account_id", filters.accountId);
-  if (filters?.search) {
-    query = query.ilike("description", `%${filters.search}%`);
-  }
+  if (filters?.search) query = query.ilike("description", `%${filters.search}%`);
 
   const { data } = await query;
   return (data ?? []) as unknown as TransactionWithRefs[];
@@ -219,10 +333,7 @@ export async function updateTransaction(
   }>
 ) {
   const supabase = createClient();
-  return supabase
-    .from("transactions")
-    .update({ ...values })
-    .eq("id", id);
+  return supabase.from("transactions").update(values).eq("id", id);
 }
 
 export async function deleteTransaction(id: string) {
@@ -234,7 +345,6 @@ export async function deleteTransaction(id: string) {
 
 export async function getMonthlySummary(month: number, year: number) {
   const transactions = await getTransactions({ month, year });
-  const accounts = await getAccounts();
 
   const totalIncome = transactions
     .filter((t) => t.type === "income")
@@ -243,8 +353,6 @@ export async function getMonthlySummary(month: number, year: number) {
   const totalExpenses = transactions
     .filter((t) => t.type === "expense")
     .reduce((s, t) => s + t.amount, 0);
-
-  const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
 
   // Category breakdown
   const catMap = new Map<
@@ -291,9 +399,7 @@ export async function getMonthlySummary(month: number, year: number) {
     totalIncome,
     totalExpenses,
     balance: totalIncome - totalExpenses,
-    totalBalance,
     transactions,
-    accounts,
     categoryBreakdown,
     dailySpending,
   };
