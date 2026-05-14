@@ -23,6 +23,7 @@ import {
   getAccounts,
   getCategories,
   getLiabilities,
+  getCreditCards,
   createIncome,
   createExpense,
   createTransfer,
@@ -32,7 +33,7 @@ import {
   createSavingsAllocation,
 } from "@/lib/supabase/queries";
 import type { Database } from "@/types/database";
-import type { MovementType } from "@/types";
+import type { MovementType, CreditCardWithLiability } from "@/types";
 
 type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
 type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
@@ -271,6 +272,7 @@ type SharedProps = {
   accounts: AccountRow[];
   categories: { expense: CategoryRow[]; income: CategoryRow[] };
   liabilities: LiabilityRow[];
+  creditCards: CreditCardWithLiability[];
   today: string;
   onSuccess: (emoji: string, label: string, amount: string) => void;
 };
@@ -530,7 +532,7 @@ function DebtPaymentForm({ accounts, liabilities, today, onSuccess }: SharedProp
   );
 }
 
-function CreditCardForm({ categories, liabilities, today, onSuccess }: SharedProps) {
+function CreditCardForm({ categories, creditCards, today, onSuccess }: SharedProps) {
   const { register, handleSubmit, setValue, watch, formState: { errors, isSubmitting } } =
     useForm<z.infer<typeof creditCardSchema>>({
       resolver: zodResolver(creditCardSchema),
@@ -539,14 +541,17 @@ function CreditCardForm({ categories, liabilities, today, onSuccess }: SharedPro
 
   const liabilityId = watch("liability_id") ?? "";
   const categoryId = watch("category_id") ?? "";
-  const cardDebts = liabilities.filter((l) => l.liability_type === "credit_card");
-  const selectedLiab = cardDebts.find((l) => l.id === liabilityId);
+  const selectedCard = creditCards.find((c) => c.liability_id === liabilityId);
+  const available = selectedCard?.credit_limit != null
+    ? selectedCard.credit_limit - selectedCard.current_balance
+    : null;
 
   const onSubmit = async (data: z.infer<typeof creditCardSchema>) => {
-    if (!selectedLiab) throw new Error("Tarjeta no encontrada");
+    if (!selectedCard?.liability_id) throw new Error("Tarjeta no encontrada");
     await createCreditCardPurchase({
       liability_id: data.liability_id,
-      liability_name: selectedLiab.name,
+      liability_name: selectedCard.name,
+      credit_card_account_id: selectedCard.account_id,
       amount: Number(data.amount),
       description: data.description,
       category_id: data.category_id || undefined,
@@ -568,19 +573,28 @@ function CreditCardForm({ categories, liabilities, today, onSuccess }: SharedPro
               <SelectValue placeholder="Selecciona la tarjeta" />
             </SelectTrigger>
             <SelectContent>
-              {cardDebts.map((l) => (
-                <SelectItem key={l.id} value={l.id}>
-                  💳 {l.name}
+              {creditCards.map((c) => (
+                <SelectItem key={c.account_id} value={c.liability_id ?? ""}>
+                  💳 {c.name}
+                  {c.card_network ? ` (${c.card_network})` : ""}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <FieldError msg={errors.liability_id?.message} />
-          {cardDebts.length === 0 && (
+          {creditCards.length === 0 && (
             <p className="text-xs text-zinc-400">
               No tienes tarjetas de crédito registradas.{" "}
               <Link href="/deudas" className="text-violet-600 underline">Agregar</Link>
             </p>
+          )}
+          {selectedCard && (
+            <div className="bg-zinc-50 rounded-xl p-3 text-xs text-zinc-500 space-y-0.5">
+              <p>Deuda actual: <span className="font-semibold text-rose-600">S/ {selectedCard.current_balance.toFixed(2)}</span></p>
+              {available != null && (
+                <p>Disponible: <span className="font-semibold text-emerald-600">S/ {Math.max(0, available).toFixed(2)}</span></p>
+              )}
+            </div>
           )}
         </div>
         <div className="space-y-1.5">
@@ -748,6 +762,7 @@ export default function AddPage() {
   const [expenseCats, setExpenseCats] = useState<CategoryRow[]>([]);
   const [incomeCats, setIncomeCats] = useState<CategoryRow[]>([]);
   const [liabilities, setLiabilities] = useState<LiabilityRow[]>([]);
+  const [creditCards, setCreditCards] = useState<CreditCardWithLiability[]>([]);
   const [loading, setLoading] = useState(true);
 
   const today = new Date().toISOString().split("T")[0];
@@ -758,12 +773,14 @@ export default function AddPage() {
       getCategories("expense"),
       getCategories("income"),
       getLiabilities(),
+      getCreditCards(),
     ])
-      .then(([accs, exp, inc, liabs]) => {
+      .then(([accs, exp, inc, liabs, cards]) => {
         setAccounts(accs);
         setExpenseCats(exp);
         setIncomeCats(inc);
         setLiabilities(liabs);
+        setCreditCards(cards);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -782,6 +799,7 @@ export default function AddPage() {
     accounts,
     categories: { expense: expenseCats, income: incomeCats },
     liabilities,
+    creditCards,
     today,
     onSuccess: handleSuccess,
   };

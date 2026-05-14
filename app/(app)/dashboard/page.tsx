@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import MonthSelector from "@/components/shared/MonthSelector";
 import TransactionItem from "@/components/shared/TransactionItem";
-import { getMonthlySummary, getProfile, getUserSettings, getFinancialOverviewData } from "@/lib/supabase/queries";
+import { getMonthlySummary, getProfile, getUserSettings, getFinancialOverviewData, getCreditCardSummary } from "@/lib/supabase/queries";
 import { formatCurrency } from "@/lib/utils";
 import type { Transaction, FinancialOverview } from "@/types";
 
@@ -40,6 +40,12 @@ export default function DashboardPage() {
     categoryBreakdown: { categoryId: string; name: string; icon: string; color: string; total: number }[];
     dailySpending: { date: string; label: string; amount: number }[];
   } | null>(null);
+  const [cardSummary, setCardSummary] = useState<{
+    totalDebt: number;
+    activeCount: number;
+    purchases: number;
+    payments: number;
+  } | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -48,11 +54,13 @@ export default function DashboardPage() {
       getProfile(),
       getUserSettings(),
       getFinancialOverviewData(),
+      getCreditCardSummary(currentMonth.getMonth(), currentMonth.getFullYear()),
     ])
-      .then(([summary, profile, settings, fin]) => {
+      .then(([summary, profile, settings, fin, cards]) => {
         setName(profile?.name ?? "tú");
         setSavingsGoal(settings?.savings_goal ?? 0);
         setOverview(fin.overview);
+        setCardSummary({ totalDebt: cards.totalDebt, activeCount: cards.activeCount, purchases: cards.purchases, payments: cards.payments });
         setMonthlyData({
           totalIncome: summary.totalIncome,
           totalExpenses: summary.totalExpenses,
@@ -196,6 +204,37 @@ export default function DashboardPage() {
           </p>
         </div>
       </div>
+
+      {/* Tarjetas de crédito */}
+      {cardSummary && cardSummary.activeCount > 0 && (
+        <div className="px-5 mb-4">
+          <Link href="/deudas">
+            <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">💳</span>
+                  <span className="text-sm font-semibold text-zinc-700">Tarjetas de crédito</span>
+                </div>
+                <span className="text-xs text-zinc-400">{cardSummary.activeCount} activa{cardSummary.activeCount !== 1 ? "s" : ""}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Deuda total</p>
+                  <p className="text-sm font-bold text-rose-600">{formatCurrency(cardSummary.totalDebt)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Compras mes</p>
+                  <p className="text-sm font-bold text-pink-600">{formatCurrency(cardSummary.purchases)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Pagos mes</p>
+                  <p className="text-sm font-bold text-emerald-600">{formatCurrency(cardSummary.payments)}</p>
+                </div>
+              </div>
+            </div>
+          </Link>
+        </div>
+      )}
 
       {/* Meta de ahorro */}
       {savingsGoal > 0 && (

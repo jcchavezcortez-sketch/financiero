@@ -48,6 +48,12 @@ export interface Account {
   include_in_available_balance: boolean;
   include_in_net_worth: boolean;
   institution_name?: string | null;
+  // credit card only
+  credit_limit?: number | null;
+  statement_closing_day?: number | null;
+  payment_due_day?: number | null;
+  card_network?: string | null;
+  last_four_digits?: string | null;
 }
 
 export interface Liability {
@@ -62,8 +68,31 @@ export interface Liability {
   minimum_payment?: number | null;
   notes?: string | null;
   status: LiabilityStatus;
+  linked_account_id?: string | null;
   created_at: string;
   updated_at?: string;
+}
+
+export const CARD_NETWORKS = ["Visa", "Mastercard", "Amex", "Diners", "Otra"] as const;
+export type CardNetwork = typeof CARD_NETWORKS[number];
+
+export interface CreditCardWithLiability {
+  account_id: string;
+  name: string;
+  institution_name: string | null;
+  card_network: string | null;
+  last_four_digits: string | null;
+  credit_limit: number | null;
+  statement_closing_day: number | null;
+  payment_due_day: number | null;
+  color: string;
+  icon: string;
+  liability_id: string | null;
+  current_balance: number;
+  original_amount: number | null;
+  minimum_payment: number | null;
+  status: string;
+  notes: string | null;
 }
 
 export interface LiabilityPayment {
