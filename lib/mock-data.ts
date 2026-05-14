@@ -6,6 +6,7 @@ import type {
   MonthlySummary,
   CategorySummary,
   DailySpending,
+  MovementType,
 } from "@/types";
 
 export const mockUser: User = {
@@ -66,7 +67,9 @@ export const mockAccounts: Account[] = [
   },
 ];
 
-export const mockTransactions: Transaction[] = [
+type RawTx = Omit<Transaction, "movement_type" | "affects_monthly_income" | "affects_monthly_expense">;
+
+const rawMockTransactions: RawTx[] = [
   {
     id: "t-1",
     type: "income",
@@ -393,6 +396,13 @@ export const mockTransactions: Transaction[] = [
     currency: "PEN",
   },
 ];
+
+export const mockTransactions: Transaction[] = rawMockTransactions.map((t) => ({
+  ...t,
+  movement_type: t.type as MovementType,
+  affects_monthly_income: t.type === "income",
+  affects_monthly_expense: t.type === "expense",
+}));
 
 export const mockMonthlySummary: MonthlySummary = {
   month: "Mayo",

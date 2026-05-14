@@ -61,6 +61,7 @@ export default function TransactionsPage() {
       rawTransactions.map((t) => ({
         id: t.id,
         type: t.type as "expense" | "income",
+        movement_type: (t.movement_type ?? t.type) as Transaction["movement_type"],
         amount: t.amount,
         description: t.description,
         merchant: t.merchant ?? undefined,
@@ -70,6 +71,8 @@ export default function TransactionsPage() {
         accountName: t.account?.name ?? "",
         date: t.date,
         currency: t.currency,
+        affects_monthly_income: t.affects_monthly_income ?? t.type === "income",
+        affects_monthly_expense: t.affects_monthly_expense ?? t.type === "expense",
       })),
     [rawTransactions]
   );

@@ -1,5 +1,14 @@
 export type TransactionType = "expense" | "income";
 
+export type MovementType =
+  | "income"
+  | "expense"
+  | "transfer"
+  | "debt_payment"
+  | "credit_card_purchase"
+  | "balance_adjustment"
+  | "savings_allocation";
+
 export type AccountType =
   | "debit"
   | "savings"
@@ -57,6 +66,18 @@ export interface Liability {
   updated_at?: string;
 }
 
+export interface LiabilityPayment {
+  id: string;
+  user_id: string;
+  liability_id: string;
+  account_id: string;
+  transaction_id: string | null;
+  amount: number;
+  payment_date: string;
+  notes: string | null;
+  created_at: string;
+}
+
 export interface FinancialSnapshot {
   id: string;
   snapshot_date: string;
@@ -87,6 +108,7 @@ export interface Category {
 export interface Transaction {
   id: string;
   type: TransactionType;
+  movement_type: MovementType;
   amount: number;
   description: string;
   merchant?: string;
@@ -94,9 +116,14 @@ export interface Transaction {
   categoryId: string;
   accountId: string;
   accountName: string;
+  fromAccountId?: string;
+  toAccountId?: string;
+  liabilityId?: string;
   date: string;
   notes?: string;
   currency: string;
+  affects_monthly_income: boolean;
+  affects_monthly_expense: boolean;
 }
 
 export interface MonthlySummary {
@@ -135,14 +162,14 @@ export interface DailySpending {
   amount: number;
 }
 
-export interface LiabilityPayment {
-  id: string;
-  user_id: string;
-  liability_id: string;
-  account_id: string;
-  transaction_id: string | null;
-  amount: number;
-  payment_date: string;
-  notes: string | null;
-  created_at: string;
-}
+// ── Movement type metadata ────────────────────────────────────────────────────
+
+export const MOVEMENT_META: Record<MovementType, { label: string; emoji: string; color: string }> = {
+  income:               { label: "Ingreso",           emoji: "💰", color: "#10B981" },
+  expense:              { label: "Gasto",              emoji: "💸", color: "#EF4444" },
+  transfer:             { label: "Transferencia",      emoji: "↔️",  color: "#6366F1" },
+  debt_payment:         { label: "Pago de deuda",      emoji: "💳", color: "#F59E0B" },
+  credit_card_purchase: { label: "Compra con tarjeta", emoji: "🛍️", color: "#EC4899" },
+  balance_adjustment:   { label: "Ajuste de saldo",   emoji: "⚖️",  color: "#64748B" },
+  savings_allocation:   { label: "Ahorro protegido",  emoji: "🐷", color: "#14B8A6" },
+};
