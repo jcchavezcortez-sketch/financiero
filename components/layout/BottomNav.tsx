@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, List, PlusCircle, Lightbulb, Settings } from "lucide-react";
+import { Home, List, PlusCircle, CreditCard, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", icon: Home, label: "Inicio" },
   { href: "/transactions", icon: List, label: "Movimientos" },
   { href: "/add", icon: PlusCircle, label: "Agregar", isAction: true },
-  { href: "/insights", icon: Lightbulb, label: "Insights" },
+  { href: "/deudas", icon: CreditCard, label: "Deudas" },
   { href: "/settings", icon: Settings, label: "Config" },
 ];
 
