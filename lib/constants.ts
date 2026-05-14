@@ -32,12 +32,20 @@ export const INCOME_CATEGORIES = [
 export const ALL_CATEGORIES = [...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES];
 
 export const ACCOUNT_TYPES = [
-  { id: "checking", name: "Cuenta corriente" },
-  { id: "savings", name: "Cuenta de ahorros" },
-  { id: "digital", name: "Billetera digital" },
-  { id: "cash", name: "Efectivo" },
-  { id: "credit", name: "Tarjeta de crédito" },
-  { id: "investment", name: "Inversión" },
+  { id: "debit",             name: "Débito / cuenta sueldo",      icon: "🏦", includeInAvailable: true,  includeInNetWorth: true  },
+  { id: "savings",           name: "Ahorro disponible",           icon: "🐷", includeInAvailable: true,  includeInNetWorth: true  },
+  { id: "protected_savings", name: "Ahorro protegido / no tocar", icon: "🔒", includeInAvailable: false, includeInNetWorth: true  },
+  { id: "cash",              name: "Efectivo",                    icon: "💵", includeInAvailable: true,  includeInNetWorth: true  },
+  { id: "wallet",            name: "Yape / Plin",                 icon: "📱", includeInAvailable: true,  includeInNetWorth: true  },
+  { id: "credit_card",       name: "Tarjeta de crédito",          icon: "💳", includeInAvailable: false, includeInNetWorth: false },
+  { id: "other",             name: "Otra cuenta",                 icon: "💼", includeInAvailable: true,  includeInNetWorth: true  },
+];
+
+export const LIABILITY_TYPES = [
+  { id: "credit_card",   name: "Tarjeta de crédito", icon: "💳" },
+  { id: "personal_debt", name: "Deuda a persona",    icon: "🤝" },
+  { id: "loan",          name: "Préstamo",           icon: "🏦" },
+  { id: "other",         name: "Otra deuda",         icon: "📋" },
 ];
 
 export const CURRENCIES = [
