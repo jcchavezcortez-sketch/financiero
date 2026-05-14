@@ -42,18 +42,31 @@ const isSupabaseConfigured = !!(
   process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
+const LIABILITY_TYPES = [
+  { id: "credit_card", label: "Tarjeta de crédito" },
+  { id: "personal_debt", label: "Deuda personal" },
+  { id: "loan", label: "Préstamo" },
+  { id: "other", label: "Otro" },
+];
+
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const liabilitySchema = z.object({
+  liability_type: z.string().min(1, "Selecciona un tipo"),
   name: z.string().min(2, "Mínimo 2 caracteres"),
   original_amount: z
     .string()
-    .refine((v) => !isNaN(Number(v)) && Number(v) > 0, "Debe ser mayor a 0"),
+    .refine((v) => v === "" || (!isNaN(Number(v)) && Number(v) > 0), "Debe ser mayor a 0")
+    .optional(),
   current_balance: z
     .string()
     .refine((v) => !isNaN(Number(v)) && Number(v) >= 0, "Debe ser 0 o mayor"),
-  creditor: z.string().optional(),
+  creditor_name: z.string().optional(),
   due_date: z.string().optional(),
+  minimum_payment: z
+    .string()
+    .refine((v) => v === "" || (!isNaN(Number(v)) && Number(v) >= 0), "Monto inválido")
+    .optional(),
   notes: z.string().optional(),
 });
 type LiabilityForm = z.infer<typeof liabilitySchema>;
@@ -77,7 +90,6 @@ export default function DeudasPage() {
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [loading, setLoading] = useState(isSupabaseConfigured);
 
-  // Sheet states
   const [showAddEdit, setShowAddEdit] = useState(false);
   const [editingLiability, setEditingLiability] = useState<Liability | null>(null);
   const [showPayment, setShowPayment] = useState(false);
@@ -103,11 +115,11 @@ export default function DeudasPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Liability add/edit ────────────────────────────────────────────────────
+  // ── Add / Edit ────────────────────────────────────────────────────────────
 
   function openAdd() {
     setEditingLiability(null);
-    liabilityForm.reset({ name: "", original_amount: "", current_balance: "", creditor: "", due_date: "", notes: "" });
+    liabilityForm.reset({ liability_type: "", name: "", original_amount: "", current_balance: "", creditor_name: "", due_date: "", minimum_payment: "", notes: "" });
     setSubmitted(false);
     setShowAddEdit(true);
   }
@@ -115,11 +127,13 @@ export default function DeudasPage() {
   function openEdit(liability: Liability) {
     setEditingLiability(liability);
     liabilityForm.reset({
+      liability_type: liability.liability_type,
       name: liability.name,
-      original_amount: String(liability.original_amount),
+      original_amount: liability.original_amount != null ? String(liability.original_amount) : "",
       current_balance: String(liability.current_balance),
-      creditor: liability.creditor ?? "",
+      creditor_name: liability.creditor_name ?? "",
       due_date: liability.due_date ?? "",
+      minimum_payment: liability.minimum_payment != null ? String(liability.minimum_payment) : "",
       notes: liability.notes ?? "",
     });
     setSubmitted(false);
@@ -129,11 +143,13 @@ export default function DeudasPage() {
   const onSubmitLiability = async (data: LiabilityForm) => {
     if (!isSupabaseConfigured) return;
     const values = {
+      liability_type: data.liability_type,
       name: data.name,
-      original_amount: Number(data.original_amount),
+      original_amount: data.original_amount ? Number(data.original_amount) : null,
       current_balance: Number(data.current_balance),
-      creditor: data.creditor || null,
+      creditor_name: data.creditor_name || null,
       due_date: data.due_date || null,
+      minimum_payment: data.minimum_payment ? Number(data.minimum_payment) : null,
       notes: data.notes || null,
     };
     try {
@@ -209,7 +225,7 @@ export default function DeudasPage() {
     }
   };
 
-  // ── Payment history ───────────────────────────────────────────────────────
+  // ── History ───────────────────────────────────────────────────────────────
 
   async function openHistory(liability: Liability) {
     setHistoryLiability(liability);
@@ -226,7 +242,7 @@ export default function DeudasPage() {
     });
   }
 
-  // ── Derived data ──────────────────────────────────────────────────────────
+  // ── Derived ───────────────────────────────────────────────────────────────
 
   const totalPending = liabilities
     .filter((l) => l.status === "active")
@@ -272,7 +288,7 @@ export default function DeudasPage() {
         </div>
       </div>
 
-      {/* Liability list */}
+      {/* List */}
       <div className="px-5 space-y-3 mb-8">
         {liabilities.length === 0 && (
           <div className="text-center py-12">
@@ -285,19 +301,14 @@ export default function DeudasPage() {
         )}
 
         {liabilities.map((liability) => {
-          const paid = liability.original_amount - liability.current_balance;
-          const pct =
-            liability.original_amount > 0
-              ? Math.min(100, (paid / liability.original_amount) * 100)
-              : 0;
+          const originalAmt = liability.original_amount ?? liability.current_balance;
+          const paid = originalAmt - liability.current_balance;
+          const pct = originalAmt > 0 ? Math.min(100, (paid / originalAmt) * 100) : 0;
           const isExpanded = expandedIds.has(liability.id);
+          const typeLabel = LIABILITY_TYPES.find((t) => t.id === liability.liability_type)?.label ?? liability.liability_type;
 
           return (
-            <div
-              key={liability.id}
-              className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden"
-            >
-              {/* Card header */}
+            <div key={liability.id} className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
               <div className="p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1 min-w-0">
@@ -314,9 +325,9 @@ export default function DeudasPage() {
                         {liability.status === "paid" ? "Pagada" : "Activa"}
                       </Badge>
                     </div>
-                    {liability.creditor && (
-                      <p className="text-xs text-zinc-400 mt-0.5">{liability.creditor}</p>
-                    )}
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      {typeLabel}{liability.creditor_name ? ` · ${liability.creditor_name}` : ""}
+                    </p>
                   </div>
                   <button
                     onClick={() => toggleExpand(liability.id)}
@@ -327,12 +338,11 @@ export default function DeudasPage() {
                   </button>
                 </div>
 
-                {/* Amounts */}
                 <div className="grid grid-cols-3 gap-2 mb-3 text-center">
                   <div>
                     <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Original</p>
                     <p className="text-sm font-semibold text-zinc-700">
-                      {formatCurrency(liability.original_amount)}
+                      {liability.original_amount != null ? formatCurrency(liability.original_amount) : "—"}
                     </p>
                   </div>
                   <div>
@@ -349,18 +359,21 @@ export default function DeudasPage() {
                   </div>
                 </div>
 
-                {/* Progress */}
-                <Progress value={pct} className="h-2 mb-1" />
-                <p className="text-[10px] text-zinc-400 text-right">{Math.round(pct)}% pagado</p>
+                {liability.original_amount != null && (
+                  <>
+                    <Progress value={pct} className="h-2 mb-1" />
+                    <p className="text-[10px] text-zinc-400 text-right">{Math.round(pct)}% pagado</p>
+                  </>
+                )}
 
                 {liability.due_date && (
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Vence: {formatDate(liability.due_date)}
-                  </p>
+                  <p className="text-xs text-zinc-400 mt-1">Vence: {formatDate(liability.due_date)}</p>
+                )}
+                {liability.minimum_payment != null && (
+                  <p className="text-xs text-zinc-400">Cuota mínima: {formatCurrency(liability.minimum_payment)}</p>
                 )}
               </div>
 
-              {/* Expanded actions */}
               {isExpanded && (
                 <div className="border-t border-zinc-50 bg-zinc-50 px-4 py-3 grid grid-cols-2 gap-2">
                   {liability.status === "active" && (
@@ -435,8 +448,28 @@ export default function DeudasPage() {
           ) : (
             <div className="px-1 py-4 space-y-4">
               <div className="space-y-1.5">
-                <Label>Nombre de la deuda</Label>
-                <Input placeholder="Ej. Préstamo banco, tarjeta Ripley..." {...liabilityForm.register("name")} />
+                <Label>Tipo de deuda</Label>
+                <Select
+                  defaultValue={editingLiability?.liability_type}
+                  onValueChange={(v) => liabilityForm.setValue("liability_type", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona el tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LIABILITY_TYPES.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {liabilityForm.formState.errors.liability_type && (
+                  <p className="text-xs text-rose-500">{liabilityForm.formState.errors.liability_type.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Nombre</Label>
+                <Input placeholder="Ej. Tarjeta BCP, préstamo Juan..." {...liabilityForm.register("name")} />
                 {liabilityForm.formState.errors.name && (
                   <p className="text-xs text-rose-500">{liabilityForm.formState.errors.name.message}</p>
                 )}
@@ -444,7 +477,7 @@ export default function DeudasPage() {
 
               <div className="space-y-1.5">
                 <Label>Acreedor (opcional)</Label>
-                <Input placeholder="Ej. BCP, amigo Juan..." {...liabilityForm.register("creditor")} />
+                <Input placeholder="Ej. BCP, amigo Juan..." {...liabilityForm.register("creditor_name")} />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -454,9 +487,6 @@ export default function DeudasPage() {
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm font-semibold">S/</span>
                     <Input type="number" placeholder="0.00" className="pl-9" {...liabilityForm.register("original_amount")} />
                   </div>
-                  {liabilityForm.formState.errors.original_amount && (
-                    <p className="text-xs text-rose-500">{liabilityForm.formState.errors.original_amount.message}</p>
-                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label>Saldo pendiente</Label>
@@ -470,14 +500,23 @@ export default function DeudasPage() {
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <Label>Fecha de vencimiento (opcional)</Label>
-                <Input type="date" {...liabilityForm.register("due_date")} />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Cuota mínima</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm font-semibold">S/</span>
+                    <Input type="number" placeholder="0.00" className="pl-9" {...liabilityForm.register("minimum_payment")} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Fecha de vencimiento</Label>
+                  <Input type="date" {...liabilityForm.register("due_date")} />
+                </div>
               </div>
 
               <div className="space-y-1.5">
                 <Label>Notas (opcional)</Label>
-                <Textarea placeholder="Tasa de interés, condiciones..." {...liabilityForm.register("notes")} />
+                <Textarea placeholder="Tasa, condiciones..." {...liabilityForm.register("notes")} />
               </div>
             </div>
           )}
@@ -492,9 +531,7 @@ export default function DeudasPage() {
               >
                 {liabilityForm.formState.isSubmitting
                   ? "Guardando..."
-                  : editingLiability
-                  ? "Guardar cambios"
-                  : "Registrar deuda"}
+                  : editingLiability ? "Guardar cambios" : "Registrar deuda"}
               </Button>
             </SheetFooter>
           )}
@@ -618,9 +655,7 @@ export default function DeudasPage() {
                     </p>
                     {p.notes && <p className="text-xs text-zinc-400 mt-0.5">{p.notes}</p>}
                   </div>
-                  <div className="text-emerald-500">
-                    <CheckCircle className="size-5" />
-                  </div>
+                  <CheckCircle className="size-5 text-emerald-500" />
                 </div>
               ))
             )}

@@ -43,10 +43,14 @@ export interface Database {
           name: string;
           type: string;
           balance: number;
+          initial_balance: number;
           currency: string;
           color: string;
           icon: string;
           is_active: boolean;
+          include_in_available_balance: boolean;
+          include_in_net_worth: boolean;
+          institution_name: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -56,10 +60,14 @@ export interface Database {
           name: string;
           type: string;
           balance?: number;
+          initial_balance?: number;
           currency?: string;
           color?: string;
           icon?: string;
           is_active?: boolean;
+          include_in_available_balance?: boolean;
+          include_in_net_worth?: boolean;
+          institution_name?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -67,11 +75,92 @@ export interface Database {
           name?: string;
           type?: string;
           balance?: number;
+          initial_balance?: number;
           currency?: string;
           color?: string;
           icon?: string;
           is_active?: boolean;
+          include_in_available_balance?: boolean;
+          include_in_net_worth?: boolean;
+          institution_name?: string | null;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      liabilities: {
+        Row: {
+          id: string;
+          user_id: string;
+          liability_type: string;
+          name: string;
+          creditor_name: string | null;
+          original_amount: number | null;
+          current_balance: number;
+          due_date: string | null;
+          minimum_payment: number | null;
+          notes: string | null;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          liability_type: string;
+          name: string;
+          creditor_name?: string | null;
+          original_amount?: number | null;
+          current_balance: number;
+          due_date?: string | null;
+          minimum_payment?: number | null;
+          notes?: string | null;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          liability_type?: string;
+          name?: string;
+          creditor_name?: string | null;
+          original_amount?: number | null;
+          current_balance?: number;
+          due_date?: string | null;
+          minimum_payment?: number | null;
+          notes?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      financial_snapshots: {
+        Row: {
+          id: string;
+          user_id: string;
+          snapshot_date: string;
+          liquid_available_amount: number;
+          protected_savings_amount: number;
+          total_liabilities_amount: number;
+          net_worth_amount: number;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          snapshot_date?: string;
+          liquid_available_amount?: number;
+          protected_savings_amount?: number;
+          total_liabilities_amount?: number;
+          net_worth_amount?: number;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          liquid_available_amount?: number;
+          protected_savings_amount?: number;
+          total_liabilities_amount?: number;
+          net_worth_amount?: number;
+          notes?: string | null;
         };
         Relationships: [];
       };
@@ -237,45 +326,6 @@ export interface Database {
           status?: string;
           imported_rows?: number;
           skipped_rows?: number;
-        };
-        Relationships: [];
-      };
-      liabilities: {
-        Row: {
-          id: string;
-          user_id: string;
-          name: string;
-          original_amount: number;
-          current_balance: number;
-          due_date: string | null;
-          creditor: string | null;
-          notes: string | null;
-          status: string;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          name: string;
-          original_amount: number;
-          current_balance: number;
-          due_date?: string | null;
-          creditor?: string | null;
-          notes?: string | null;
-          status?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          name?: string;
-          original_amount?: number;
-          current_balance?: number;
-          due_date?: string | null;
-          creditor?: string | null;
-          notes?: string | null;
-          status?: string;
-          updated_at?: string;
         };
         Relationships: [];
       };

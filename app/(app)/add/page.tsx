@@ -18,23 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { mockAccounts } from "@/lib/mock-data";
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import {
-  getAccounts,
-  getCategories,
-  insertTransaction,
-} from "@/lib/supabase/queries";
+import { getAccounts, getCategories, insertTransaction } from "@/lib/supabase/queries";
 import type { Database } from "@/types/database";
 
 type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
 type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
-
-const isSupabaseConfigured = !!(
-  process.env.NEXT_PUBLIC_SUPABASE_URL &&
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
 
 const addSchema = z.object({
   amount: z
@@ -55,9 +44,10 @@ export default function AddPage() {
   const router = useRouter();
   const [type, setType] = useState<"expense" | "income">("expense");
   const [success, setSuccess] = useState(false);
-  const [accounts, setAccounts] = useState<Array<{ id: string; name: string; icon: string }>>([]);
-  const [expenseCats, setExpenseCats] = useState<Array<{ id: string; name: string; icon: string; color: string }>>([]);
-  const [incomeCats, setIncomeCats] = useState<Array<{ id: string; name: string; icon: string; color: string }>>([]);
+  const [accounts, setAccounts] = useState<AccountRow[]>([]);
+  const [expenseCats, setExpenseCats] = useState<CategoryRow[]>([]);
+  const [incomeCats, setIncomeCats] = useState<CategoryRow[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -80,21 +70,19 @@ export default function AddPage() {
   });
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      setAccounts(mockAccounts.map((a) => ({ id: a.id, name: a.name, icon: a.icon })));
-      setExpenseCats(EXPENSE_CATEGORIES);
-      setIncomeCats(INCOME_CATEGORIES);
-      return;
-    }
+    setLoadingData(true);
     Promise.all([
       getAccounts(),
       getCategories("expense"),
       getCategories("income"),
-    ]).then(([accs, exp, inc]) => {
-      setAccounts(accs.map((a) => ({ id: a.id, name: a.name, icon: a.icon })));
-      setExpenseCats(exp.map((c) => ({ id: c.id, name: c.name, icon: c.icon, color: c.color })));
-      setIncomeCats(inc.map((c) => ({ id: c.id, name: c.name, icon: c.icon, color: c.color })));
-    });
+    ])
+      .then(([accs, exp, inc]) => {
+        setAccounts(accs);
+        setExpenseCats(exp);
+        setIncomeCats(inc);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingData(false));
   }, []);
 
   const categories = type === "expense" ? expenseCats : incomeCats;
@@ -102,11 +90,6 @@ export default function AddPage() {
   const amountValue = watch("amount");
 
   const onSubmit = async (data: AddForm) => {
-    if (!isSupabaseConfigured) {
-      await new Promise((r) => setTimeout(r, 600));
-      setSuccess(true);
-      return;
-    }
     try {
       await insertTransaction({
         type,
@@ -120,8 +103,8 @@ export default function AddPage() {
         source: "manual",
       });
       setSuccess(true);
-    } catch {
-      // silently handle
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -149,11 +132,33 @@ export default function AddPage() {
             >
               Agregar otro
             </Button>
-            <Button variant="outline" className="w-full" onClick={() => router.push("/dashboard")}>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => router.push("/dashboard")}
+            >
               Ir al inicio
             </Button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // No accounts yet
+  if (!loadingData && accounts.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-stone-50">
+        <div className="text-4xl mb-4">🏦</div>
+        <h2 className="text-xl font-bold text-zinc-800 mb-2">
+          Primero crea una cuenta
+        </h2>
+        <p className="text-zinc-500 text-sm mb-6">
+          Necesitas al menos una cuenta para registrar movimientos.
+        </p>
+        <Link href="/accounts">
+          <Button>Ir a Cuentas</Button>
+        </Link>
       </div>
     );
   }
@@ -185,20 +190,30 @@ export default function AddPage() {
         <div className="flex bg-zinc-100 rounded-2xl p-1">
           <button
             type="button"
-            onClick={() => { setType("expense"); setValue("categoryId", ""); }}
+            onClick={() => {
+              setType("expense");
+              setValue("categoryId", "");
+            }}
             className={cn(
               "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
-              type === "expense" ? "bg-white text-rose-600 shadow-sm" : "text-zinc-500"
+              type === "expense"
+                ? "bg-white text-rose-600 shadow-sm"
+                : "text-zinc-500"
             )}
           >
             💸 Gasto
           </button>
           <button
             type="button"
-            onClick={() => { setType("income"); setValue("categoryId", ""); }}
+            onClick={() => {
+              setType("income");
+              setValue("categoryId", "");
+            }}
             className={cn(
               "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
-              type === "income" ? "bg-white text-emerald-600 shadow-sm" : "text-zinc-500"
+              type === "income"
+                ? "bg-white text-emerald-600 shadow-sm"
+                : "text-zinc-500"
             )}
           >
             💰 Ingreso
@@ -211,7 +226,12 @@ export default function AddPage() {
         <div className="bg-white rounded-3xl p-6 text-center shadow-sm border border-zinc-100">
           <p className="text-xs text-zinc-400 uppercase tracking-wide mb-2">Monto</p>
           <div className="flex items-center justify-center gap-2">
-            <span className={cn("text-3xl font-bold", type === "expense" ? "text-rose-500" : "text-emerald-500")}>
+            <span
+              className={cn(
+                "text-3xl font-bold",
+                type === "expense" ? "text-rose-500" : "text-emerald-500"
+              )}
+            >
               S/
             </span>
             <input
@@ -238,7 +258,9 @@ export default function AddPage() {
         <div className="space-y-1.5">
           <Label htmlFor="date">Fecha</Label>
           <Input id="date" type="date" max={today} {...register("date")} />
-          {errors.date && <p className="text-xs text-rose-500">{errors.date.message}</p>}
+          {errors.date && (
+            <p className="text-xs text-rose-500">{errors.date.message}</p>
+          )}
         </div>
 
         {/* Account */}
@@ -256,33 +278,45 @@ export default function AddPage() {
               ))}
             </SelectContent>
           </Select>
-          {errors.accountId && <p className="text-xs text-rose-500">{errors.accountId.message}</p>}
+          {errors.accountId && (
+            <p className="text-xs text-rose-500">{errors.accountId.message}</p>
+          )}
         </div>
 
         {/* Category Grid */}
         <div className="space-y-2">
           <Label>Categoría</Label>
-          <div className="grid grid-cols-4 gap-2">
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setValue("categoryId", cat.id)}
-                className={cn(
-                  "flex flex-col items-center gap-1 p-2.5 rounded-xl border-2 transition-all duration-150 text-center",
-                  selectedCategory === cat.id
-                    ? "border-violet-500 bg-violet-50"
-                    : "border-zinc-100 bg-white hover:border-zinc-200"
-                )}
-              >
-                <span className="text-xl">{cat.icon}</span>
-                <span className="text-[10px] text-zinc-600 leading-tight">
-                  {cat.name.split(" ")[0]}
-                </span>
-              </button>
-            ))}
-          </div>
-          {errors.categoryId && <p className="text-xs text-rose-500">{errors.categoryId.message}</p>}
+          {loadingData ? (
+            <div className="grid grid-cols-4 gap-2">
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                <div key={i} className="h-16 bg-zinc-100 rounded-xl animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-4 gap-2">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setValue("categoryId", cat.id)}
+                  className={cn(
+                    "flex flex-col items-center gap-1 p-2.5 rounded-xl border-2 transition-all duration-150 text-center",
+                    selectedCategory === cat.id
+                      ? "border-violet-500 bg-violet-50"
+                      : "border-zinc-100 bg-white hover:border-zinc-200"
+                  )}
+                >
+                  <span className="text-xl">{cat.icon}</span>
+                  <span className="text-[10px] text-zinc-600 leading-tight">
+                    {cat.name.split(" ")[0]}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {errors.categoryId && (
+            <p className="text-xs text-rose-500">{errors.categoryId.message}</p>
+          )}
         </div>
 
         {/* Description */}
@@ -290,10 +324,12 @@ export default function AddPage() {
           <Label htmlFor="description">Descripción</Label>
           <Input
             id="description"
-            placeholder="Ej. Almuerzo en Wong, taxi a casa..."
+            placeholder="Ej. Almuerzo, taxi, recibo de luz..."
             {...register("description")}
           />
-          {errors.description && <p className="text-xs text-rose-500">{errors.description.message}</p>}
+          {errors.description && (
+            <p className="text-xs text-rose-500">{errors.description.message}</p>
+          )}
         </div>
 
         {/* Merchant */}
@@ -322,7 +358,7 @@ export default function AddPage() {
           className="w-full"
           size="lg"
           onClick={handleSubmit(onSubmit)}
-          disabled={isSubmitting}
+          disabled={isSubmitting || loadingData}
         >
           {isSubmitting ? (
             <span className="flex items-center gap-2">

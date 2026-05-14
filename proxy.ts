@@ -7,6 +7,7 @@ const PROTECTED_PATHS = [
   "/add",
   "/accounts",
   "/categories",
+  "/deudas",
   "/insights",
   "/voice",
   "/import",
@@ -14,7 +15,7 @@ const PROTECTED_PATHS = [
 ];
 const AUTH_PATHS = ["/login", "/register"];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   // Skip if Supabase env vars aren't configured yet

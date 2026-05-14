@@ -1,12 +1,21 @@
 export type TransactionType = "expense" | "income";
 
 export type AccountType =
-  | "checking"
+  | "debit"
   | "savings"
-  | "digital"
+  | "protected_savings"
   | "cash"
+  | "wallet"
+  | "credit_card"
+  | "other"
+  // legacy values kept for backwards compat
+  | "checking"
+  | "digital"
   | "credit"
   | "investment";
+
+export type LiabilityType = "credit_card" | "personal_debt" | "loan" | "other";
+export type LiabilityStatus = "active" | "paid";
 
 export interface User {
   id: string;
@@ -23,9 +32,47 @@ export interface Account {
   name: string;
   type: AccountType;
   balance: number;
+  initial_balance: number;
   currency: string;
   color: string;
   icon: string;
+  include_in_available_balance: boolean;
+  include_in_net_worth: boolean;
+  institution_name?: string | null;
+}
+
+export interface Liability {
+  id: string;
+  user_id?: string;
+  liability_type: LiabilityType;
+  name: string;
+  creditor_name?: string | null;
+  original_amount?: number | null;
+  current_balance: number;
+  due_date?: string | null;
+  minimum_payment?: number | null;
+  notes?: string | null;
+  status: LiabilityStatus;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface FinancialSnapshot {
+  id: string;
+  snapshot_date: string;
+  liquid_available_amount: number;
+  protected_savings_amount: number;
+  total_liabilities_amount: number;
+  net_worth_amount: number;
+  notes?: string | null;
+}
+
+export interface FinancialOverview {
+  liquidAvailable: number;
+  protectedSavings: number;
+  totalLiabilities: number;
+  netWorth: number;
+  availableToSpend: number;
 }
 
 export interface Category {
@@ -86,22 +133,6 @@ export interface DailySpending {
   date: string;
   label: string;
   amount: number;
-}
-
-export type LiabilityStatus = "active" | "paid";
-
-export interface Liability {
-  id: string;
-  user_id: string;
-  name: string;
-  original_amount: number;
-  current_balance: number;
-  due_date: string | null;
-  creditor: string | null;
-  notes: string | null;
-  status: LiabilityStatus;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface LiabilityPayment {
