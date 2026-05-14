@@ -108,6 +108,40 @@ create table public.savings_goals (
 );
 
 -- ============================================================
+-- TABLA: liabilities
+-- Deudas del usuario (préstamos, tarjetas, etc.)
+-- ============================================================
+create table public.liabilities (
+  id              uuid primary key default uuid_generate_v4(),
+  user_id         uuid not null references auth.users(id) on delete cascade,
+  name            text not null,
+  original_amount numeric(12,2) not null check (original_amount > 0),
+  current_balance numeric(12,2) not null default 0 check (current_balance >= 0),
+  due_date        date,
+  creditor        text,
+  notes           text,
+  status          text not null default 'active' check (status in ('active', 'paid')),
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+-- ============================================================
+-- TABLA: liability_payments
+-- Pagos registrados contra una deuda
+-- ============================================================
+create table public.liability_payments (
+  id             uuid primary key default uuid_generate_v4(),
+  user_id        uuid not null references auth.users(id) on delete cascade,
+  liability_id   uuid not null references public.liabilities(id) on delete cascade,
+  account_id     uuid not null references public.accounts(id),
+  transaction_id uuid references public.transactions(id),
+  amount         numeric(12,2) not null check (amount > 0),
+  payment_date   date not null,
+  notes          text,
+  created_at     timestamptz not null default now()
+);
+
+-- ============================================================
 -- TABLA: statement_imports
 -- Sesiones de importación de estados de cuenta
 -- ============================================================
@@ -144,6 +178,11 @@ create table public.import_rows (
 -- ============================================================
 -- ÍNDICES
 -- ============================================================
+create index idx_liabilities_user_id      on public.liabilities(user_id);
+create index idx_liabilities_status       on public.liabilities(user_id, status);
+create index idx_liability_payments_user  on public.liability_payments(user_id);
+create index idx_liability_payments_liab  on public.liability_payments(liability_id);
+create index idx_liability_payments_date  on public.liability_payments(payment_date);
 create index idx_accounts_user_id        on public.accounts(user_id);
 create index idx_categories_user_id      on public.categories(user_id);
 create index idx_transactions_user_id    on public.transactions(user_id);
@@ -185,6 +224,10 @@ create trigger trg_savings_goals_updated_at
   before update on public.savings_goals
   for each row execute function public.set_updated_at();
 
+create trigger trg_liabilities_updated_at
+  before update on public.liabilities
+  for each row execute function public.set_updated_at();
+
 -- ============================================================
 -- ROW LEVEL SECURITY
 -- ============================================================
@@ -194,7 +237,9 @@ alter table public.accounts          enable row level security;
 alter table public.categories        enable row level security;
 alter table public.transactions      enable row level security;
 alter table public.savings_goals     enable row level security;
-alter table public.statement_imports enable row level security;
+alter table public.liabilities         enable row level security;
+alter table public.liability_payments  enable row level security;
+alter table public.statement_imports   enable row level security;
 alter table public.import_rows       enable row level security;
 
 -- profiles
@@ -252,6 +297,26 @@ create policy "Users can update own goals"
   on public.savings_goals for update using (auth.uid() = user_id);
 create policy "Users can delete own goals"
   on public.savings_goals for delete using (auth.uid() = user_id);
+
+-- liabilities
+create policy "Users can view own liabilities"
+  on public.liabilities for select using (auth.uid() = user_id);
+create policy "Users can insert own liabilities"
+  on public.liabilities for insert with check (auth.uid() = user_id);
+create policy "Users can update own liabilities"
+  on public.liabilities for update using (auth.uid() = user_id);
+create policy "Users can delete own liabilities"
+  on public.liabilities for delete using (auth.uid() = user_id);
+
+-- liability_payments
+create policy "Users can view own liability payments"
+  on public.liability_payments for select using (auth.uid() = user_id);
+create policy "Users can insert own liability payments"
+  on public.liability_payments for insert with check (auth.uid() = user_id);
+create policy "Users can update own liability payments"
+  on public.liability_payments for update using (auth.uid() = user_id);
+create policy "Users can delete own liability payments"
+  on public.liability_payments for delete using (auth.uid() = user_id);
 
 -- statement_imports
 create policy "Users can view own imports"

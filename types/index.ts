@@ -87,3 +87,31 @@ export interface DailySpending {
   label: string;
   amount: number;
 }
+
+export type LiabilityStatus = "active" | "paid";
+
+export interface Liability {
+  id: string;
+  user_id: string;
+  name: string;
+  original_amount: number;
+  current_balance: number;
+  due_date: string | null;
+  creditor: string | null;
+  notes: string | null;
+  status: LiabilityStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LiabilityPayment {
+  id: string;
+  user_id: string;
+  liability_id: string;
+  account_id: string;
+  transaction_id: string | null;
+  amount: number;
+  payment_date: string;
+  notes: string | null;
+  created_at: string;
+}

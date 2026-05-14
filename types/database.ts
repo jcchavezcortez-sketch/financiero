@@ -240,6 +240,73 @@ export interface Database {
         };
         Relationships: [];
       };
+      liabilities: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          original_amount: number;
+          current_balance: number;
+          due_date: string | null;
+          creditor: string | null;
+          notes: string | null;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          original_amount: number;
+          current_balance: number;
+          due_date?: string | null;
+          creditor?: string | null;
+          notes?: string | null;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          original_amount?: number;
+          current_balance?: number;
+          due_date?: string | null;
+          creditor?: string | null;
+          notes?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      liability_payments: {
+        Row: {
+          id: string;
+          user_id: string;
+          liability_id: string;
+          account_id: string;
+          transaction_id: string | null;
+          amount: number;
+          payment_date: string;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          liability_id: string;
+          account_id: string;
+          transaction_id?: string | null;
+          amount: number;
+          payment_date: string;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          notes?: string | null;
+        };
+        Relationships: [];
+      };
       import_rows: {
         Row: {
           id: string;
@@ -283,6 +350,10 @@ export interface Database {
       seed_default_categories: {
         Args: { p_user_id: string };
         Returns: undefined;
+      };
+      ensure_debt_category: {
+        Args: { p_user_id: string };
+        Returns: string;
       };
     };
     Enums: {

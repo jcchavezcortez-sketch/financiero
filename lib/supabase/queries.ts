@@ -230,6 +230,167 @@ export async function deleteTransaction(id: string) {
   return supabase.from("transactions").delete().eq("id", id);
 }
 
+// ── Liabilities ───────────────────────────────────────────────────────────────
+
+export async function getLiabilities() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data } = await supabase
+    .from("liabilities")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+  return data ?? [];
+}
+
+export async function insertLiability(values: {
+  name: string;
+  original_amount: number;
+  current_balance: number;
+  due_date?: string | null;
+  creditor?: string | null;
+  notes?: string | null;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+  return supabase.from("liabilities").insert({
+    user_id: user.id,
+    status: "active",
+    ...values,
+  });
+}
+
+export async function updateLiability(
+  id: string,
+  values: Partial<{
+    name: string;
+    original_amount: number;
+    current_balance: number;
+    due_date: string | null;
+    creditor: string | null;
+    notes: string | null;
+    status: string;
+  }>
+) {
+  const supabase = createClient();
+  return supabase.from("liabilities").update(values).eq("id", id);
+}
+
+export async function deleteLiability(id: string) {
+  const supabase = createClient();
+  return supabase.from("liabilities").delete().eq("id", id);
+}
+
+export async function getLiabilityPayments(liabilityId: string) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data } = await supabase
+    .from("liability_payments")
+    .select("*, account:accounts(name, icon)")
+    .eq("user_id", user.id)
+    .eq("liability_id", liabilityId)
+    .order("payment_date", { ascending: false });
+  return data ?? [];
+}
+
+async function getOrCreateDebtCategory(userId: string, supabase: ReturnType<typeof createClient>): Promise<string | null> {
+  const { data: existing } = await supabase
+    .from("categories")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("name", "Deudas")
+    .eq("type", "expense")
+    .single();
+  if (existing) return existing.id;
+  const { data: inserted } = await supabase
+    .from("categories")
+    .insert({ user_id: userId, name: "Deudas", icon: "💳", color: "#EF4444", type: "expense", is_custom: true })
+    .select("id")
+    .single();
+  return inserted?.id ?? null;
+}
+
+export async function registerLiabilityPayment(values: {
+  liability_id: string;
+  liability_name: string;
+  account_id: string;
+  amount: number;
+  payment_date: string;
+  notes?: string | null;
+  current_balance: number;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const categoryId = await getOrCreateDebtCategory(user.id, supabase);
+
+  // 1. Create the expense transaction
+  const { data: tx, error: txError } = await supabase
+    .from("transactions")
+    .insert({
+      user_id: user.id,
+      type: "expense",
+      amount: values.amount,
+      description: `Pago de deuda: ${values.liability_name}`,
+      category_id: categoryId,
+      account_id: values.account_id,
+      date: values.payment_date,
+      notes: values.notes ?? null,
+      source: "manual",
+    })
+    .select("id")
+    .single();
+  if (txError) throw txError;
+
+  // 2. Decrement the account balance
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("balance")
+    .eq("id", values.account_id)
+    .single();
+  if (account) {
+    await supabase
+      .from("accounts")
+      .update({ balance: account.balance - values.amount })
+      .eq("id", values.account_id);
+  }
+
+  // 3. Record the payment
+  const { error: pmtError } = await supabase.from("liability_payments").insert({
+    user_id: user.id,
+    liability_id: values.liability_id,
+    account_id: values.account_id,
+    transaction_id: tx?.id ?? null,
+    amount: values.amount,
+    payment_date: values.payment_date,
+    notes: values.notes ?? null,
+  });
+  if (pmtError) throw pmtError;
+
+  // 4. Update liability balance and status
+  const newBalance = Math.max(0, values.current_balance - values.amount);
+  const newStatus = newBalance === 0 ? "paid" : "active";
+  const { error: liabError } = await supabase
+    .from("liabilities")
+    .update({ current_balance: newBalance, status: newStatus })
+    .eq("id", values.liability_id);
+  if (liabError) throw liabError;
+
+  return { newBalance, newStatus };
+}
+
+export async function markLiabilityPaid(id: string) {
+  const supabase = createClient();
+  return supabase
+    .from("liabilities")
+    .update({ current_balance: 0, status: "paid" })
+    .eq("id", id);
+}
+
 // ── Dashboard summary ─────────────────────────────────────────────────────────
 
 export async function getMonthlySummary(month: number, year: number) {
