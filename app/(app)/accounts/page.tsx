@@ -580,10 +580,9 @@ export default function AccountsPage() {
                         <Label>Red</Label>
                         <Select onValueChange={(v) => accountForm.setValue("card_network", v)}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Red" />
+                            <SelectValue placeholder="Sin especificar" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">Sin especificar</SelectItem>
                             {CARD_NETWORKS.map((n) => (
                               <SelectItem key={n} value={n}>{n}</SelectItem>
                             ))}

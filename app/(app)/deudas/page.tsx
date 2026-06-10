@@ -665,10 +665,9 @@ export default function DeudasPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Red</Label>
-                  <Select defaultValue={editingCard?.card_network ?? ""} onValueChange={(v) => cardForm.setValue("card_network", v)}>
-                    <SelectTrigger><SelectValue placeholder="Red" /></SelectTrigger>
+                  <Select defaultValue={editingCard?.card_network ?? undefined} onValueChange={(v) => cardForm.setValue("card_network", v)}>
+                    <SelectTrigger><SelectValue placeholder="Sin especificar" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Sin especificar</SelectItem>
                       {CARD_NETWORKS.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
                     </SelectContent>
                   </Select>
