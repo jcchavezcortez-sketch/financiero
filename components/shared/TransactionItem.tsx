@@ -1,6 +1,7 @@
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { getCategoryIcon } from "@/lib/utils";
 import type { Transaction } from "@/types";
+import { MOVEMENT_META } from "@/types";
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -10,6 +11,8 @@ interface TransactionItemProps {
 export default function TransactionItem({ transaction, onClick }: TransactionItemProps) {
   const isExpense = transaction.type === "expense";
   const icon = getCategoryIcon(transaction.category);
+  const mt = transaction.movement_type;
+  const movementMeta = (mt && mt !== "expense" && mt !== "income") ? MOVEMENT_META[mt] : null;
 
   return (
     <button
@@ -26,7 +29,12 @@ export default function TransactionItem({ transaction, onClick }: TransactionIte
         <p className="text-sm font-semibold text-zinc-800 truncate">
           {transaction.description}
         </p>
-        <div className="flex items-center gap-1.5 mt-0.5">
+        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+          {movementMeta && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-500 font-medium shrink-0">
+              {movementMeta.label}
+            </span>
+          )}
           <span className="text-xs text-zinc-400 truncate">{transaction.category}</span>
           <span className="text-zinc-200">•</span>
           <span className="text-xs text-zinc-400 truncate">{transaction.accountName}</span>

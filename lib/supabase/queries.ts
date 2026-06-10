@@ -1,7 +1,7 @@
 import { createClient } from "./client";
 import type { Database } from "@/types/database";
 import { getFinancialOverview } from "@/lib/finance";
-import type { Account, Liability, FinancialOverview } from "@/types";
+import type { Account, Liability, FinancialOverview, CreditCardWithLiability } from "@/types";
 
 type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
@@ -462,6 +462,167 @@ export async function markLiabilityPaid(id: string) {
   return supabase.from("liabilities").update({ current_balance: 0, status: "paid" }).eq("id", id);
 }
 
+// ── Credit card helpers ───────────────────────────────────────────────────────
+
+export async function getCreditCards(): Promise<CreditCardWithLiability[]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const [{ data: accounts }, { data: liabilities }] = await Promise.all([
+    supabase.from("accounts").select("*").eq("user_id", user.id).eq("type", "credit_card").eq("is_active", true).order("created_at"),
+    supabase.from("liabilities").select("*").eq("user_id", user.id).eq("liability_type", "credit_card"),
+  ]);
+
+  return (accounts ?? []).map((acc) => {
+    const liab = (liabilities ?? []).find((l) => l.linked_account_id === acc.id);
+    return {
+      account_id: acc.id,
+      name: acc.name,
+      institution_name: acc.institution_name ?? null,
+      card_network: acc.card_network ?? null,
+      last_four_digits: acc.last_four_digits ?? null,
+      credit_limit: acc.credit_limit ?? null,
+      statement_closing_day: acc.statement_closing_day ?? null,
+      payment_due_day: acc.payment_due_day ?? null,
+      color: acc.color,
+      icon: acc.icon,
+      liability_id: liab?.id ?? null,
+      current_balance: liab?.current_balance ?? 0,
+      original_amount: liab?.original_amount ?? null,
+      minimum_payment: liab?.minimum_payment ?? null,
+      status: liab?.status ?? "paid",
+      notes: liab?.notes ?? null,
+    } satisfies CreditCardWithLiability;
+  });
+}
+
+export async function insertCreditCard(values: {
+  name: string;
+  institution_name?: string | null;
+  card_network?: string | null;
+  last_four_digits?: string | null;
+  credit_limit?: number | null;
+  current_balance: number;
+  statement_closing_day?: number | null;
+  payment_due_day?: number | null;
+  minimum_payment?: number | null;
+  notes?: string | null;
+}) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { data: account, error: accErr } = await supabase.from("accounts").insert({
+    user_id: user.id,
+    name: values.name,
+    type: "credit_card",
+    balance: 0,
+    initial_balance: 0,
+    icon: "💳",
+    color: "#EF4444",
+    include_in_available_balance: false,
+    include_in_net_worth: false,
+    institution_name: values.institution_name ?? null,
+    credit_limit: values.credit_limit ?? null,
+    statement_closing_day: values.statement_closing_day ?? null,
+    payment_due_day: values.payment_due_day ?? null,
+    card_network: values.card_network ?? null,
+    last_four_digits: values.last_four_digits ?? null,
+  }).select("id").single();
+  if (accErr) throw accErr;
+
+  const { error: liabErr } = await supabase.from("liabilities").insert({
+    user_id: user.id,
+    liability_type: "credit_card",
+    name: values.name,
+    creditor_name: values.institution_name ?? null,
+    current_balance: values.current_balance,
+    original_amount: values.current_balance,
+    minimum_payment: values.minimum_payment ?? null,
+    notes: values.notes ?? null,
+    status: values.current_balance > 0 ? "active" : "paid",
+    linked_account_id: account.id,
+  });
+  if (liabErr) throw liabErr;
+
+  return account;
+}
+
+export async function updateCreditCard(
+  accountId: string,
+  liabilityId: string | null,
+  values: {
+    name?: string;
+    institution_name?: string | null;
+    card_network?: string | null;
+    last_four_digits?: string | null;
+    credit_limit?: number | null;
+    statement_closing_day?: number | null;
+    payment_due_day?: number | null;
+    minimum_payment?: number | null;
+    notes?: string | null;
+  }
+) {
+  const supabase = createClient();
+  await supabase.from("accounts").update({
+    name: values.name,
+    institution_name: values.institution_name ?? null,
+    card_network: values.card_network ?? null,
+    last_four_digits: values.last_four_digits ?? null,
+    credit_limit: values.credit_limit ?? null,
+    statement_closing_day: values.statement_closing_day ?? null,
+    payment_due_day: values.payment_due_day ?? null,
+  }).eq("id", accountId);
+
+  if (liabilityId) {
+    await supabase.from("liabilities").update({
+      name: values.name,
+      creditor_name: values.institution_name ?? null,
+      minimum_payment: values.minimum_payment ?? null,
+      notes: values.notes ?? null,
+    }).eq("id", liabilityId);
+  }
+}
+
+export async function deleteCreditCard(accountId: string, liabilityId: string | null) {
+  const supabase = createClient();
+  // Check for transactions first
+  const { data: txs } = await supabase
+    .from("transactions")
+    .select("id")
+    .eq("account_id", accountId)
+    .limit(1);
+  if (txs && txs.length > 0) {
+    throw new Error("Esta tarjeta tiene movimientos registrados. Solo puedes desactivarla.");
+  }
+  await supabase.from("accounts").update({ is_active: false }).eq("id", accountId);
+  if (liabilityId) {
+    await supabase.from("liabilities").update({ status: "paid", current_balance: 0 }).eq("id", liabilityId);
+  }
+}
+
+export async function getCreditCardSummary(month: number, year: number) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { totalDebt: 0, activeCount: 0, purchases: 0, payments: 0, cards: [] as CreditCardWithLiability[] };
+
+  const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const end = new Date(year, month + 1, 0).toISOString().split("T")[0];
+
+  const [cards, { data: txs }] = await Promise.all([
+    getCreditCards(),
+    supabase.from("transactions").select("movement_type, amount").eq("user_id", user.id).in("movement_type", ["credit_card_purchase", "debt_payment"]).gte("date", start).lte("date", end),
+  ]);
+
+  const purchases = (txs ?? []).filter((t) => t.movement_type === "credit_card_purchase").reduce((s, t) => s + t.amount, 0);
+  const payments = (txs ?? []).filter((t) => t.movement_type === "debt_payment").reduce((s, t) => s + t.amount, 0);
+  const totalDebt = cards.reduce((s, c) => s + c.current_balance, 0);
+  const activeCount = cards.filter((c) => c.current_balance > 0).length;
+
+  return { totalDebt, activeCount, purchases, payments, cards };
+}
+
 // ── 5. createCreditCardPurchase ───────────────────────────────────────────────
 
 export async function createCreditCardPurchase(values: {
@@ -472,17 +633,22 @@ export async function createCreditCardPurchase(values: {
   category_id?: string;
   date: string;
   notes?: string;
+  credit_card_account_id?: string;
 }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("No autenticado");
 
-  // Cuenta fantasma: se necesita account_id en transactions.
-  // Usamos la liability_id como referencia; buscamos si hay una cuenta asociada a la tarjeta.
-  // Como fallback, usamos un account_id ficticio (primera cuenta del usuario).
-  const { data: firstAccount } = await supabase
-    .from("accounts").select("id").eq("user_id", user.id).eq("is_active", true).limit(1).single();
-  const accountId = firstAccount?.id ?? "00000000-0000-0000-0000-000000000000";
+  // Use the linked credit card account if provided, otherwise fall back to liability's linked account
+  let accountId = values.credit_card_account_id;
+  if (!accountId) {
+    const { data: liab } = await supabase.from("liabilities").select("linked_account_id").eq("id", values.liability_id).single();
+    accountId = liab?.linked_account_id ?? undefined;
+  }
+  if (!accountId) {
+    const { data: firstAccount } = await supabase.from("accounts").select("id").eq("user_id", user.id).eq("is_active", true).limit(1).single();
+    accountId = firstAccount?.id ?? "00000000-0000-0000-0000-000000000000";
+  }
 
   // 1. Registrar la compra como gasto mensual
   const { error: txError } = await supabase.from("transactions").insert({
