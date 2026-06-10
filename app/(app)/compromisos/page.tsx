@@ -37,6 +37,7 @@ import {
   toPeriodMonth,
   getAccounts,
   getLiabilities,
+  getCategories,
 } from "@/lib/supabase/queries";
 import type { Database } from "@/types/database";
 import type {
@@ -48,6 +49,7 @@ import { COMMITMENT_TYPE_META, DEBT_COMMITMENT_TYPES, SAVINGS_COMMITMENT_TYPES }
 
 type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
 type LiabilityRow = Database["public"]["Tables"]["liabilities"]["Row"];
+type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -104,6 +106,7 @@ export default function CompromisosPage() {
   const [cashFlow, setCashFlow] = useState<FreeCashFlowSummary | null>(null);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [liabilities, setLiabilities] = useState<LiabilityRow[]>([]);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Sheets
@@ -122,16 +125,18 @@ export default function CompromisosPage() {
     setLoading(true);
     setError(null);
     try {
-      const [cs, cf, accs, liabs] = await Promise.all([
+      const [cs, cf, accs, liabs, cats] = await Promise.all([
         getCommitmentsWithStatus(periodMonth),
         getFreeCashFlowSummary(periodMonth),
         getAccounts(),
         getLiabilities("active"),
+        getCategories("expense"),
       ]);
       setCommitments(cs);
       setCashFlow(cf);
       setAccounts(accs);
       setLiabilities(liabs);
+      setCategories(cats);
     } catch (e) {
       setError("Error al cargar datos");
       console.error(e);
@@ -577,6 +582,11 @@ export default function CompromisosPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="no_category">Sin categoría</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.icon} {c.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
