@@ -51,6 +51,11 @@ export interface Database {
           include_in_available_balance: boolean;
           include_in_net_worth: boolean;
           institution_name: string | null;
+          credit_limit: number | null;
+          statement_closing_day: number | null;
+          payment_due_day: number | null;
+          card_network: string | null;
+          last_four_digits: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -68,6 +73,11 @@ export interface Database {
           include_in_available_balance?: boolean;
           include_in_net_worth?: boolean;
           institution_name?: string | null;
+          credit_limit?: number | null;
+          statement_closing_day?: number | null;
+          payment_due_day?: number | null;
+          card_network?: string | null;
+          last_four_digits?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -83,6 +93,11 @@ export interface Database {
           include_in_available_balance?: boolean;
           include_in_net_worth?: boolean;
           institution_name?: string | null;
+          credit_limit?: number | null;
+          statement_closing_day?: number | null;
+          payment_due_day?: number | null;
+          card_network?: string | null;
+          last_four_digits?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -100,6 +115,7 @@ export interface Database {
           minimum_payment: number | null;
           notes: string | null;
           status: string;
+          linked_account_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -115,6 +131,7 @@ export interface Database {
           minimum_payment?: number | null;
           notes?: string | null;
           status?: string;
+          linked_account_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -128,6 +145,7 @@ export interface Database {
           minimum_payment?: number | null;
           notes?: string | null;
           status?: string;
+          linked_account_id?: string | null;
           updated_at?: string;
         };
         Relationships: [];

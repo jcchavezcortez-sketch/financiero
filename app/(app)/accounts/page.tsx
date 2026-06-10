@@ -35,6 +35,7 @@ import { formatCurrency } from "@/lib/utils";
 import {
   getAccounts,
   insertAccount,
+  insertCreditCard,
   deleteAccount,
   getLiabilities,
   insertLiability,
@@ -48,6 +49,7 @@ import {
   getNetWorth,
 } from "@/lib/finance";
 import type { Account, Liability } from "@/types";
+import { CARD_NETWORKS } from "@/types";
 import type { Database } from "@/types/database";
 
 type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
@@ -60,6 +62,13 @@ const addAccountSchema = z.object({
     .string()
     .refine((v) => !isNaN(Number(v)) && Number(v) >= 0, "Monto inválido"),
   institution_name: z.string().optional(),
+  // Credit card fields (only used when type = credit_card)
+  card_network: z.string().optional(),
+  last_four_digits: z.string().optional(),
+  credit_limit: z.string().optional(),
+  statement_closing_day: z.string().optional(),
+  payment_due_day: z.string().optional(),
+  minimum_payment: z.string().optional(),
 });
 
 const addLiabilitySchema = z.object({
@@ -101,6 +110,8 @@ export default function AccountsPage() {
     resolver: zodResolver(addAccountSchema),
   });
 
+  const watchedAccountType = accountForm.watch("type");
+
   const liabilityForm = useForm<AddLiabilityForm>({
     resolver: zodResolver(addLiabilitySchema),
   });
@@ -128,17 +139,31 @@ export default function AccountsPage() {
   const onAddAccount = async (data: AddAccountForm) => {
     const accountType = ACCOUNT_TYPES.find((t) => t.id === data.type);
     try {
-      await insertAccount({
-        name: data.name,
-        type: data.type,
-        balance: Number(data.balance),
-        initial_balance: Number(data.balance),
-        icon: accountType?.icon ?? "🏦",
-        color: "#7C3AED",
-        include_in_available_balance: accountType?.includeInAvailable ?? true,
-        include_in_net_worth: accountType?.includeInNetWorth ?? true,
-        institution_name: data.institution_name || null,
-      });
+      if (data.type === "credit_card") {
+        await insertCreditCard({
+          name: data.name,
+          institution_name: data.institution_name || null,
+          card_network: data.card_network || null,
+          last_four_digits: data.last_four_digits || null,
+          credit_limit: data.credit_limit ? Number(data.credit_limit) : null,
+          current_balance: Number(data.balance),
+          statement_closing_day: data.statement_closing_day ? Number(data.statement_closing_day) : null,
+          payment_due_day: data.payment_due_day ? Number(data.payment_due_day) : null,
+          minimum_payment: data.minimum_payment ? Number(data.minimum_payment) : null,
+        });
+      } else {
+        await insertAccount({
+          name: data.name,
+          type: data.type,
+          balance: Number(data.balance),
+          initial_balance: Number(data.balance),
+          icon: accountType?.icon ?? "🏦",
+          color: "#7C3AED",
+          include_in_available_balance: accountType?.includeInAvailable ?? true,
+          include_in_net_worth: accountType?.includeInNetWorth ?? true,
+          institution_name: data.institution_name || null,
+        });
+      }
       const updated = await getAccounts();
       setAccounts(updated);
       setAccountSubmitted(true);
@@ -521,7 +546,7 @@ export default function AccountsPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label>Saldo actual</Label>
+                  <Label>{watchedAccountType === "credit_card" ? "Deuda actual" : "Saldo actual"}</Label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 font-semibold text-sm">
                       S/
@@ -547,6 +572,59 @@ export default function AccountsPage() {
                     {...accountForm.register("institution_name")}
                   />
                 </div>
+
+                {watchedAccountType === "credit_card" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Red</Label>
+                        <Select onValueChange={(v) => accountForm.setValue("card_network", v)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Red" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">Sin especificar</SelectItem>
+                            {CARD_NETWORKS.map((n) => (
+                              <SelectItem key={n} value={n}>{n}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Últimos 4 dígitos</Label>
+                        <Input
+                          placeholder="1234"
+                          maxLength={4}
+                          {...accountForm.register("last_four_digits")}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Línea de crédito</Label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 font-semibold text-sm">S/</span>
+                        <Input type="number" placeholder="5000" className="pl-10" {...accountForm.register("credit_limit")} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Día de cierre</Label>
+                        <Input type="number" min={1} max={31} placeholder="15" {...accountForm.register("statement_closing_day")} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Día de pago</Label>
+                        <Input type="number" min={1} max={31} placeholder="25" {...accountForm.register("payment_due_day")} />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Pago mínimo (opcional)</Label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 font-semibold text-sm">S/</span>
+                        <Input type="number" placeholder="0.00" className="pl-10" {...accountForm.register("minimum_payment")} />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
               <SheetFooter>
                 <Button
