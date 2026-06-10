@@ -18,12 +18,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import {
   getAccounts,
   getCategories,
   getLiabilities,
   getCreditCards,
+  insertCreditCard,
   createIncome,
   createExpense,
   createTransfer,
@@ -34,6 +42,7 @@ import {
 } from "@/lib/supabase/queries";
 import type { Database } from "@/types/database";
 import type { MovementType, CreditCardWithLiability } from "@/types";
+import { CARD_NETWORKS } from "@/types";
 
 type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
 type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
@@ -130,6 +139,18 @@ const savingsSchema = z
     message: "Las cuentas deben ser distintas",
     path: ["to_account_id"],
   });
+
+const newCardSchema = z.object({
+  name: z.string().min(2, "Mínimo 2 caracteres"),
+  institution_name: z.string().optional(),
+  card_network: z.string().optional(),
+  last_four_digits: z.string().optional(),
+  credit_limit: z.string().refine((v) => v === "" || (!isNaN(Number(v)) && Number(v) >= 0), "Monto inválido").optional(),
+  current_balance: z.string().refine((v) => !isNaN(Number(v)) && Number(v) >= 0, "Debe ser 0 o mayor"),
+  statement_closing_day: z.string().optional(),
+  payment_due_day: z.string().optional(),
+  minimum_payment: z.string().refine((v) => v === "" || (!isNaN(Number(v)) && Number(v) >= 0), "Monto inválido").optional(),
+});
 
 // ── Shared field components ───────────────────────────────────────────────────
 
@@ -275,6 +296,7 @@ type SharedProps = {
   creditCards: CreditCardWithLiability[];
   today: string;
   onSuccess: (emoji: string, label: string, amount: string) => void;
+  onAddCard?: () => void;
 };
 
 function IncomeForm({ accounts, categories, today, onSuccess }: SharedProps) {
@@ -407,6 +429,10 @@ function TransferForm({ accounts, today, onSuccess }: SharedProps) {
   const fromId = watch("from_account_id") ?? "";
   const toId = watch("to_account_id") ?? "";
 
+  // Credit cards cannot be source or destination of a regular transfer
+  const transferableAccounts = accounts.filter((a) => a.type !== "credit_card");
+  const destAccounts = transferableAccounts.filter((a) => a.id !== fromId);
+
   const onSubmit = async (data: z.infer<typeof transferSchema>) => {
     await createTransfer({
       from_account_id: data.from_account_id,
@@ -419,6 +445,25 @@ function TransferForm({ accounts, today, onSuccess }: SharedProps) {
     onSuccess("↔️", "Transferencia", data.amount);
   };
 
+  if (transferableAccounts.length < 2) {
+    return (
+      <div className="px-5 py-8">
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center">
+          <p className="text-2xl mb-2">↔️</p>
+          <p className="text-sm font-semibold text-amber-800 mb-1">No hay cuentas disponibles</p>
+          <p className="text-sm text-amber-700">
+            Necesitas al menos dos cuentas activas para hacer una transferencia.
+          </p>
+          <Link href="/accounts">
+            <Button size="sm" variant="outline" className="mt-4">
+              Crear otra cuenta
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <AmountField register={register} error={errors.amount?.message} accent="text-indigo-600" />
@@ -427,7 +472,7 @@ function TransferForm({ accounts, today, onSuccess }: SharedProps) {
         <div className="space-y-1.5">
           <Label>Cuenta origen</Label>
           <AccountSelect
-            accounts={accounts}
+            accounts={transferableAccounts}
             value={fromId}
             onChange={(v) => setValue("from_account_id", v)}
             error={errors.from_account_id?.message}
@@ -436,13 +481,20 @@ function TransferForm({ accounts, today, onSuccess }: SharedProps) {
         </div>
         <div className="space-y-1.5">
           <Label>Cuenta destino</Label>
-          <AccountSelect
-            accounts={accounts.filter((a) => a.id !== fromId)}
-            value={toId}
-            onChange={(v) => setValue("to_account_id", v)}
-            error={errors.to_account_id?.message}
-            placeholder="¿Hacia dónde?"
-          />
+          {fromId && destAccounts.length === 0 ? (
+            <p className="text-xs text-zinc-400 py-2">
+              No hay otra cuenta disponible como destino.{" "}
+              <Link href="/accounts" className="text-violet-600 underline">Crear cuenta</Link>
+            </p>
+          ) : (
+            <AccountSelect
+              accounts={destAccounts}
+              value={toId}
+              onChange={(v) => setValue("to_account_id", v)}
+              error={errors.to_account_id?.message}
+              placeholder="¿Hacia dónde?"
+            />
+          )}
         </div>
         <div className="space-y-1.5">
           <Label>Descripción (opcional)</Label>
@@ -532,7 +584,7 @@ function DebtPaymentForm({ accounts, liabilities, today, onSuccess }: SharedProp
   );
 }
 
-function CreditCardForm({ categories, creditCards, today, onSuccess }: SharedProps) {
+function CreditCardForm({ categories, creditCards, today, onSuccess, onAddCard }: SharedProps) {
   const { register, handleSubmit, setValue, watch, formState: { errors, isSubmitting } } =
     useForm<z.infer<typeof creditCardSchema>>({
       resolver: zodResolver(creditCardSchema),
@@ -541,7 +593,10 @@ function CreditCardForm({ categories, creditCards, today, onSuccess }: SharedPro
 
   const liabilityId = watch("liability_id") ?? "";
   const categoryId = watch("category_id") ?? "";
-  const selectedCard = creditCards.find((c) => c.liability_id === liabilityId);
+
+  // Only cards that have a liability record (liability_id must be non-null/non-empty)
+  const cardsWithLiability = creditCards.filter((c) => !!c.liability_id);
+  const selectedCard = cardsWithLiability.find((c) => c.liability_id === liabilityId);
   const available = selectedCard?.credit_limit != null
     ? selectedCard.credit_limit - selectedCard.current_balance
     : null;
@@ -561,6 +616,23 @@ function CreditCardForm({ categories, creditCards, today, onSuccess }: SharedPro
     onSuccess("🛍️", "Compra con tarjeta", data.amount);
   };
 
+  if (cardsWithLiability.length === 0) {
+    return (
+      <div className="px-5 py-8">
+        <div className="bg-pink-50 border border-pink-200 rounded-2xl p-5 text-center">
+          <p className="text-2xl mb-2">💳</p>
+          <p className="text-sm font-semibold text-pink-800 mb-1">No tienes tarjetas de crédito</p>
+          <p className="text-sm text-pink-700 mb-4">
+            Agrega una tarjeta para registrar compras con crédito.
+          </p>
+          <Button size="sm" variant="outline" onClick={() => onAddCard?.()}>
+            Agregar tarjeta
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <AmountField register={register} error={errors.amount?.message} accent="text-pink-600" />
@@ -573,8 +645,8 @@ function CreditCardForm({ categories, creditCards, today, onSuccess }: SharedPro
               <SelectValue placeholder="Selecciona la tarjeta" />
             </SelectTrigger>
             <SelectContent>
-              {creditCards.map((c) => (
-                <SelectItem key={c.account_id} value={c.liability_id ?? ""}>
+              {cardsWithLiability.map((c) => (
+                <SelectItem key={c.account_id} value={c.liability_id!}>
                   💳 {c.name}
                   {c.card_network ? ` (${c.card_network})` : ""}
                 </SelectItem>
@@ -582,12 +654,13 @@ function CreditCardForm({ categories, creditCards, today, onSuccess }: SharedPro
             </SelectContent>
           </Select>
           <FieldError msg={errors.liability_id?.message} />
-          {creditCards.length === 0 && (
-            <p className="text-xs text-zinc-400">
-              No tienes tarjetas de crédito registradas.{" "}
-              <Link href="/deudas" className="text-violet-600 underline">Agregar</Link>
-            </p>
-          )}
+          <button
+            type="button"
+            onClick={() => onAddCard?.()}
+            className="text-xs text-violet-600 underline"
+          >
+            + Agregar otra tarjeta
+          </button>
           {selectedCard && (
             <div className="bg-zinc-50 rounded-xl p-3 text-xs text-zinc-500 space-y-0.5">
               <p>Deuda actual: <span className="font-semibold text-rose-600">S/ {selectedCard.current_balance.toFixed(2)}</span></p>
@@ -685,7 +758,11 @@ function SavingsForm({ accounts, today, onSuccess }: SharedProps) {
 
   const fromId = watch("from_account_id") ?? "";
   const toId = watch("to_account_id") ?? "";
-  const savingsAccounts = accounts.filter((a) => a.type === "protected_savings" || !a.include_in_available_balance);
+
+  // Origin: liquid accounts only (exclude credit cards and savings accounts)
+  const liquidAccounts = accounts.filter((a) => a.include_in_available_balance && a.type !== "credit_card");
+  // Destination: savings/protected accounts only (exclude credit cards)
+  const savingsAccounts = accounts.filter((a) => !a.include_in_available_balance && a.type !== "credit_card");
 
   const onSubmit = async (data: z.infer<typeof savingsSchema>) => {
     await createSavingsAllocation({
@@ -698,6 +775,23 @@ function SavingsForm({ accounts, today, onSuccess }: SharedProps) {
     onSuccess("🐷", "Ahorro protegido", data.amount);
   };
 
+  if (savingsAccounts.length === 0) {
+    return (
+      <div className="px-5 py-8">
+        <div className="bg-teal-50 border border-teal-200 rounded-2xl p-5 text-center">
+          <p className="text-2xl mb-2">🐷</p>
+          <p className="text-sm font-semibold text-teal-800 mb-1">No hay cuentas de ahorro</p>
+          <p className="text-sm text-teal-700 mb-4">
+            Crea una cuenta de ahorro protegido para poder separar dinero.
+          </p>
+          <Link href="/accounts">
+            <Button size="sm" variant="outline">Crear cuenta de ahorro</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <AmountField register={register} error={errors.amount?.message} accent="text-teal-600" />
@@ -706,7 +800,7 @@ function SavingsForm({ accounts, today, onSuccess }: SharedProps) {
         <div className="space-y-1.5">
           <Label>Cuenta de liquidez (origen)</Label>
           <AccountSelect
-            accounts={accounts.filter((a) => a.include_in_available_balance)}
+            accounts={liquidAccounts}
             value={fromId}
             onChange={(v) => setValue("from_account_id", v)}
             error={errors.from_account_id?.message}
@@ -716,7 +810,7 @@ function SavingsForm({ accounts, today, onSuccess }: SharedProps) {
         <div className="space-y-1.5">
           <Label>Cuenta de ahorro (destino)</Label>
           <AccountSelect
-            accounts={savingsAccounts.length > 0 ? savingsAccounts : accounts.filter((a) => a.id !== fromId)}
+            accounts={savingsAccounts.filter((a) => a.id !== fromId)}
             value={toId}
             onChange={(v) => setValue("to_account_id", v)}
             error={errors.to_account_id?.message}
@@ -764,6 +858,23 @@ export default function AddPage() {
   const [liabilities, setLiabilities] = useState<LiabilityRow[]>([]);
   const [creditCards, setCreditCards] = useState<CreditCardWithLiability[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAddCardSheet, setShowAddCardSheet] = useState(false);
+  const [addCardError, setAddCardError] = useState<string | null>(null);
+
+  const newCardForm = useForm<z.infer<typeof newCardSchema>>({
+    resolver: zodResolver(newCardSchema),
+    defaultValues: {
+      name: "",
+      institution_name: "",
+      card_network: undefined,
+      last_four_digits: "",
+      credit_limit: "",
+      current_balance: "0",
+      statement_closing_day: "",
+      payment_due_day: "",
+      minimum_payment: "",
+    },
+  });
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -795,6 +906,33 @@ export default function AddPage() {
     setSubmitError(e instanceof Error ? e.message : "Ocurrió un error al guardar");
   };
 
+  const reloadCreditCards = async () => {
+    const cards = await getCreditCards();
+    setCreditCards(cards);
+  };
+
+  const handleSaveNewCard = async (data: z.infer<typeof newCardSchema>) => {
+    setAddCardError(null);
+    try {
+      await insertCreditCard({
+        name: data.name,
+        institution_name: data.institution_name || undefined,
+        card_network: data.card_network || undefined,
+        last_four_digits: data.last_four_digits || undefined,
+        credit_limit: data.credit_limit ? Number(data.credit_limit) : undefined,
+        current_balance: Number(data.current_balance),
+        statement_closing_day: data.statement_closing_day ? Number(data.statement_closing_day) : undefined,
+        payment_due_day: data.payment_due_day ? Number(data.payment_due_day) : undefined,
+        minimum_payment: data.minimum_payment ? Number(data.minimum_payment) : undefined,
+      });
+      await reloadCreditCards();
+      setShowAddCardSheet(false);
+      newCardForm.reset();
+    } catch (e) {
+      setAddCardError(e instanceof Error ? e.message : "Error al guardar la tarjeta");
+    }
+  };
+
   const sharedProps: SharedProps = {
     accounts,
     categories: { expense: expenseCats, income: incomeCats },
@@ -802,6 +940,7 @@ export default function AddPage() {
     creditCards,
     today,
     onSuccess: handleSuccess,
+    onAddCard: () => setShowAddCardSheet(true),
   };
 
   if (success) {
@@ -911,6 +1050,91 @@ export default function AddPage() {
           {movementType === "savings_allocation" && <SavingsForm {...sharedProps} />}
         </div>
       )}
+
+      {/* Mini sheet: add new credit card */}
+      <Sheet open={showAddCardSheet} onOpenChange={(open) => { setShowAddCardSheet(open); if (!open) { newCardForm.reset(); setAddCardError(null); } }}>
+        <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto rounded-t-3xl">
+          <SheetHeader className="mb-4">
+            <SheetTitle>Nueva tarjeta de crédito</SheetTitle>
+          </SheetHeader>
+          <form onSubmit={newCardForm.handleSubmit(handleSaveNewCard)} className="space-y-4 pb-6">
+            {addCardError && (
+              <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-700">
+                {addCardError}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Nombre de la tarjeta *</Label>
+              <Input placeholder="Ej. Visa BCP" {...newCardForm.register("name")} />
+              <FieldError msg={newCardForm.formState.errors.name?.message} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Banco / Institución</Label>
+              <Input placeholder="Ej. BCP, Interbank..." {...newCardForm.register("institution_name")} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Red de la tarjeta</Label>
+              <Select
+                defaultValue={undefined}
+                onValueChange={(v) => newCardForm.setValue("card_network", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin especificar" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CARD_NETWORKS.map((n) => (
+                    <SelectItem key={n} value={n}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Últimos 4 dígitos</Label>
+                <Input placeholder="1234" maxLength={4} {...newCardForm.register("last_four_digits")} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Deuda actual *</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 font-semibold text-sm">S/</span>
+                  <Input className="pl-8" type="number" step="0.01" min="0" placeholder="0.00" {...newCardForm.register("current_balance")} />
+                </div>
+                <FieldError msg={newCardForm.formState.errors.current_balance?.message} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Límite de crédito</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 font-semibold text-sm">S/</span>
+                <Input className="pl-8" type="number" step="0.01" min="0" placeholder="0.00" {...newCardForm.register("credit_limit")} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Día cierre</Label>
+                <Input type="number" min="1" max="31" placeholder="Ej. 15" {...newCardForm.register("statement_closing_day")} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Día vencimiento</Label>
+                <Input type="number" min="1" max="31" placeholder="Ej. 5" {...newCardForm.register("payment_due_day")} />
+              </div>
+            </div>
+            <SheetFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => { setShowAddCardSheet(false); newCardForm.reset(); setAddCardError(null); }}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" className="flex-1" disabled={newCardForm.formState.isSubmitting}>
+                {newCardForm.formState.isSubmitting ? "Guardando..." : "Guardar tarjeta"}
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
