@@ -1,7 +1,20 @@
 import { createClient } from "./client";
 import type { Database } from "@/types/database";
 import { getFinancialOverview } from "@/lib/finance";
-import type { Account, Liability, FinancialOverview, CreditCardWithLiability } from "@/types";
+import type {
+  Account,
+  Liability,
+  FinancialOverview,
+  CreditCardWithLiability,
+  MonthlyCommitment,
+  CommitmentMonthLog,
+  CommitmentWithStatus,
+  CommitmentStatus,
+  CommitmentType,
+  MonthlyCommitmentSummary,
+  FreeCashFlowSummary,
+} from "@/types";
+import { DEBT_COMMITMENT_TYPES, SAVINGS_COMMITMENT_TYPES } from "@/types";
 
 type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
@@ -856,4 +869,398 @@ export async function getMonthlySummary(month: number, year: number) {
   }
 
   return { totalIncome, totalExpenses, totalDebtPayments, balance: totalIncome - totalExpenses, totalBalance, transactions, accounts, categoryBreakdown, dailySpending };
+}
+
+// ── Monthly commitments ───────────────────────────────────────────────────────
+
+/** Returns the first day of the month for a given Date as 'YYYY-MM-01' */
+export function toPeriodMonth(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
+}
+
+export async function getMonthlyCommitments(): Promise<MonthlyCommitment[]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data } = await supabase
+    .from("monthly_commitments")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .order("due_day", { ascending: true, nullsFirst: false })
+    .order("name");
+  return (data ?? []) as unknown as MonthlyCommitment[];
+}
+
+export async function insertMonthlyCommitment(values: {
+  name: string;
+  commitment_type: CommitmentType;
+  amount: number;
+  currency?: string;
+  due_day?: number | null;
+  category_id?: string | null;
+  suggested_account_id?: string | null;
+  liability_id?: string | null;
+  notes?: string | null;
+}): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+  const { error } = await supabase.from("monthly_commitments").insert({
+    user_id: user.id,
+    ...values,
+    currency: values.currency ?? "PEN",
+  });
+  if (error) throw error;
+}
+
+export async function updateMonthlyCommitment(
+  id: string,
+  values: Partial<{
+    name: string;
+    commitment_type: CommitmentType;
+    amount: number;
+    currency: string;
+    due_day: number | null;
+    category_id: string | null;
+    suggested_account_id: string | null;
+    liability_id: string | null;
+    notes: string | null;
+  }>
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("monthly_commitments")
+    .update(values)
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteOrDeactivateMonthlyCommitment(id: string): Promise<void> {
+  const supabase = createClient();
+  // Check if it has any logs — if so, deactivate instead of deleting
+  const { data: logs } = await supabase
+    .from("commitment_month_logs")
+    .select("id")
+    .eq("commitment_id", id)
+    .limit(1);
+  if (logs && logs.length > 0) {
+    const { error } = await supabase
+      .from("monthly_commitments")
+      .update({ is_active: false })
+      .eq("id", id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from("monthly_commitments")
+      .delete()
+      .eq("id", id);
+    if (error) throw error;
+  }
+}
+
+export async function getCommitmentLogs(periodMonth: string): Promise<CommitmentMonthLog[]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data } = await supabase
+    .from("commitment_month_logs")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("period_month", periodMonth);
+  return (data ?? []) as unknown as CommitmentMonthLog[];
+}
+
+function deriveStatus(
+  commitment: MonthlyCommitment,
+  log: CommitmentMonthLog | null,
+  periodMonth: string,
+  today: Date
+): CommitmentStatus {
+  if (log?.status === "paid") return "paid";
+  if (log?.status === "skipped") return "skipped";
+
+  // No log: check overdue
+  const [y, m] = periodMonth.split("-").map(Number);
+  const periodYear = y;
+  const periodMon = m - 1; // 0-indexed
+  const currentYear = today.getFullYear();
+  const currentMon = today.getMonth();
+
+  // Past month with no payment
+  if (periodYear < currentYear || (periodYear === currentYear && periodMon < currentMon)) {
+    return "overdue";
+  }
+  // Current month: check due_day
+  if (periodYear === currentYear && periodMon === currentMon && commitment.due_day !== null) {
+    if (today.getDate() > commitment.due_day) return "overdue";
+  }
+  return "pending";
+}
+
+export async function getCommitmentsWithStatus(periodMonth: string): Promise<CommitmentWithStatus[]> {
+  const [commitments, logs] = await Promise.all([
+    getMonthlyCommitments(),
+    getCommitmentLogs(periodMonth),
+  ]);
+  const logMap = new Map(logs.map((l) => [l.commitment_id, l]));
+  const today = new Date();
+  return commitments.map((c) => {
+    const log = logMap.get(c.id) ?? null;
+    return { ...c, log, displayStatus: deriveStatus(c, log, periodMonth, today) };
+  });
+}
+
+export async function markCommitmentAsPaid(params: {
+  commitmentId: string;
+  commitmentType: CommitmentType;
+  commitmentName: string;
+  periodMonth: string;
+  paidAmount: number;
+  paidDate: string;
+  fromAccountId: string;
+  toAccountId?: string;
+  liabilityId?: string;
+  liabilityCurrentBalance?: number;
+  categoryId?: string | null;
+  notes?: string;
+}): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+  if (params.paidAmount <= 0) throw new Error("El monto debe ser mayor a 0");
+
+  // Prevent duplicate log
+  const { data: existing } = await supabase
+    .from("commitment_month_logs")
+    .select("id")
+    .eq("commitment_id", params.commitmentId)
+    .eq("period_month", params.periodMonth)
+    .maybeSingle();
+  if (existing) throw new Error("Este compromiso ya fue registrado este mes");
+
+  let transactionId: string | null = null;
+  let liabilityPaymentId: string | null = null;
+
+  const isDebt = DEBT_COMMITMENT_TYPES.has(params.commitmentType);
+  const isSavings = SAVINGS_COMMITMENT_TYPES.has(params.commitmentType);
+
+  if (isDebt) {
+    if (!params.liabilityId) throw new Error("Debes seleccionar la deuda o tarjeta a pagar");
+    const categoryId = await getOrCreateDebtCategory(user.id, supabase);
+
+    // Create debt_payment transaction
+    const { data: tx, error: txErr } = await supabase.from("transactions").insert({
+      user_id: user.id,
+      type: "expense",
+      movement_type: "debt_payment",
+      amount: params.paidAmount,
+      description: `Pago: ${params.commitmentName}`,
+      category_id: categoryId,
+      account_id: params.fromAccountId,
+      liability_id: params.liabilityId,
+      commitment_id: params.commitmentId,
+      date: params.paidDate,
+      notes: params.notes ?? null,
+      source: "manual",
+      affects_monthly_income: false,
+      affects_monthly_expense: false,
+      affects_available_balance: true,
+      affects_net_worth: false,
+    }).select("id").single();
+    if (txErr) throw txErr;
+    transactionId = tx.id;
+
+    await adjustBalance(supabase, params.fromAccountId, -params.paidAmount);
+
+    const { data: pmtData, error: pmtErr } = await supabase.from("liability_payments").insert({
+      user_id: user.id,
+      liability_id: params.liabilityId,
+      account_id: params.fromAccountId,
+      transaction_id: transactionId,
+      amount: params.paidAmount,
+      payment_date: params.paidDate,
+      notes: params.notes ?? null,
+    }).select("id").single();
+    if (pmtErr) throw pmtErr;
+    liabilityPaymentId = pmtData.id;
+
+    const currentBal = params.liabilityCurrentBalance ?? 0;
+    const newBal = Math.max(0, currentBal - params.paidAmount);
+    await supabase.from("liabilities")
+      .update({ current_balance: newBal, status: newBal === 0 ? "paid" : "active" })
+      .eq("id", params.liabilityId);
+
+  } else if (isSavings) {
+    if (!params.toAccountId) throw new Error("Debes seleccionar la cuenta de ahorro destino");
+
+    const { data: tx, error: txErr } = await supabase.from("transactions").insert({
+      user_id: user.id,
+      type: "expense",
+      movement_type: "savings_allocation",
+      amount: params.paidAmount,
+      description: `Ahorro: ${params.commitmentName}`,
+      account_id: params.fromAccountId,
+      from_account_id: params.fromAccountId,
+      to_account_id: params.toAccountId,
+      commitment_id: params.commitmentId,
+      date: params.paidDate,
+      notes: params.notes ?? null,
+      source: "manual",
+      affects_monthly_income: false,
+      affects_monthly_expense: false,
+      affects_available_balance: true,
+      affects_net_worth: false,
+    }).select("id").single();
+    if (txErr) throw txErr;
+    transactionId = tx.id;
+
+    await adjustBalance(supabase, params.fromAccountId, -params.paidAmount);
+    await adjustBalance(supabase, params.toAccountId, params.paidAmount);
+
+  } else {
+    // Regular expense (rent, utility, subscription, insurance, other)
+    const { data: tx, error: txErr } = await supabase.from("transactions").insert({
+      user_id: user.id,
+      type: "expense",
+      movement_type: "expense",
+      amount: params.paidAmount,
+      description: params.commitmentName,
+      category_id: params.categoryId ?? null,
+      account_id: params.fromAccountId,
+      commitment_id: params.commitmentId,
+      date: params.paidDate,
+      notes: params.notes ?? null,
+      source: "manual",
+      affects_monthly_income: false,
+      affects_monthly_expense: true,
+      affects_available_balance: true,
+      affects_net_worth: true,
+    }).select("id").single();
+    if (txErr) throw txErr;
+    transactionId = tx.id;
+
+    await adjustBalance(supabase, params.fromAccountId, -params.paidAmount);
+  }
+
+  const { error: logErr } = await supabase.from("commitment_month_logs").insert({
+    user_id: user.id,
+    commitment_id: params.commitmentId,
+    period_month: params.periodMonth,
+    status: "paid",
+    paid_amount: params.paidAmount,
+    paid_date: params.paidDate,
+    transaction_id: transactionId,
+    liability_payment_id: liabilityPaymentId,
+    notes: params.notes ?? null,
+  });
+  if (logErr) throw logErr;
+}
+
+export async function markCommitmentAsSkipped(params: {
+  commitmentId: string;
+  periodMonth: string;
+  notes?: string;
+}): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { data: existing } = await supabase
+    .from("commitment_month_logs")
+    .select("id")
+    .eq("commitment_id", params.commitmentId)
+    .eq("period_month", params.periodMonth)
+    .maybeSingle();
+  if (existing) throw new Error("Este compromiso ya tiene un registro este mes");
+
+  const { error } = await supabase.from("commitment_month_logs").insert({
+    user_id: user.id,
+    commitment_id: params.commitmentId,
+    period_month: params.periodMonth,
+    status: "skipped",
+    notes: params.notes ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function getMonthlyCommitmentSummary(periodMonth: string): Promise<MonthlyCommitmentSummary> {
+  const commitments = await getCommitmentsWithStatus(periodMonth);
+  let total = 0, totalPaid = 0, totalPending = 0, totalOverdue = 0, totalSkipped = 0;
+  let fixedExpensesPending = 0, debtMinimumsPending = 0, plannedSavingsPending = 0;
+  let nextDue: CommitmentWithStatus | null = null;
+
+  for (const c of commitments) {
+    total += c.amount;
+    const s = c.displayStatus;
+    if (s === "paid") {
+      totalPaid += c.log?.paid_amount ?? c.amount;
+    } else if (s === "skipped") {
+      totalSkipped += c.amount;
+    } else {
+      const pending = s === "pending" || s === "overdue";
+      if (s === "overdue") totalOverdue += c.amount;
+      else totalPending += c.amount;
+      if (pending) {
+        if (DEBT_COMMITMENT_TYPES.has(c.commitment_type)) debtMinimumsPending += c.amount;
+        else if (SAVINGS_COMMITMENT_TYPES.has(c.commitment_type)) plannedSavingsPending += c.amount;
+        else fixedExpensesPending += c.amount;
+      }
+    }
+    if (c.displayStatus === "pending" && c.due_day !== null) {
+      if (!nextDue || (nextDue.due_day ?? 99) > c.due_day) nextDue = c;
+    }
+  }
+  return { total, totalPaid, totalPending, totalOverdue, totalSkipped, fixedExpensesPending, debtMinimumsPending, plannedSavingsPending, nextDue };
+}
+
+export async function getFreeCashFlowSummary(periodMonth: string): Promise<FreeCashFlowSummary> {
+  const [accounts, liabilities, commitments] = await Promise.all([
+    getAccounts(),
+    getLiabilities("active"),
+    getCommitmentsWithStatus(periodMonth),
+  ]);
+
+  const availableBalance = accounts
+    .filter((a) => a.include_in_available_balance)
+    .reduce((s, a) => s + a.balance, 0);
+
+  const protectedSavings = accounts
+    .filter((a) => !a.include_in_available_balance && a.include_in_net_worth !== false && a.type !== "credit_card")
+    .reduce((s, a) => s + a.balance, 0);
+
+  const totalDebt = liabilities.reduce((s, l) => s + l.current_balance, 0);
+  const creditCardDebt = liabilities
+    .filter((l) => l.liability_type === "credit_card")
+    .reduce((s, l) => s + l.current_balance, 0);
+
+  const pending = commitments.filter(
+    (c) => c.displayStatus === "pending" || c.displayStatus === "overdue"
+  );
+
+  const fixedCommitmentsPending = pending
+    .filter((c) => !DEBT_COMMITMENT_TYPES.has(c.commitment_type) && !SAVINGS_COMMITMENT_TYPES.has(c.commitment_type))
+    .reduce((s, c) => s + c.amount, 0);
+  const debtMinimumsPending = pending
+    .filter((c) => DEBT_COMMITMENT_TYPES.has(c.commitment_type))
+    .reduce((s, c) => s + c.amount, 0);
+  const plannedSavingsPending = pending
+    .filter((c) => SAVINGS_COMMITMENT_TYPES.has(c.commitment_type))
+    .reduce((s, c) => s + c.amount, 0);
+  const totalCommitmentsPending = fixedCommitmentsPending + debtMinimumsPending + plannedSavingsPending;
+  const freeCashEstimated = availableBalance - totalCommitmentsPending;
+
+  return {
+    availableBalance,
+    protectedSavings,
+    totalDebt,
+    creditCardDebt,
+    fixedCommitmentsPending,
+    debtMinimumsPending,
+    plannedSavingsPending,
+    totalCommitmentsPending,
+    freeCashEstimated,
+  };
 }

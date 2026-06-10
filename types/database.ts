@@ -225,6 +225,7 @@ export interface Database {
           to_account_id: string | null;
           liability_id: string | null;
           related_transaction_id: string | null;
+          commitment_id: string | null;
           date: string;
           notes: string | null;
           currency: string;
@@ -250,6 +251,7 @@ export interface Database {
           to_account_id?: string | null;
           liability_id?: string | null;
           related_transaction_id?: string | null;
+          commitment_id?: string | null;
           date: string;
           notes?: string | null;
           currency?: string;
@@ -272,6 +274,7 @@ export interface Database {
           from_account_id?: string | null;
           to_account_id?: string | null;
           liability_id?: string | null;
+          commitment_id?: string | null;
           date?: string;
           notes?: string | null;
           affects_monthly_income?: boolean;
@@ -395,6 +398,95 @@ export interface Database {
           created_at?: string;
         };
         Update: {
+          notes?: string | null;
+        };
+        Relationships: [];
+      };
+      monthly_commitments: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          commitment_type: string;
+          amount: number;
+          currency: string;
+          due_day: number | null;
+          category_id: string | null;
+          suggested_account_id: string | null;
+          liability_id: string | null;
+          is_active: boolean;
+          starts_on: string | null;
+          ends_on: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          commitment_type: string;
+          amount: number;
+          currency?: string;
+          due_day?: number | null;
+          category_id?: string | null;
+          suggested_account_id?: string | null;
+          liability_id?: string | null;
+          is_active?: boolean;
+          starts_on?: string | null;
+          ends_on?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          commitment_type?: string;
+          amount?: number;
+          currency?: string;
+          due_day?: number | null;
+          category_id?: string | null;
+          suggested_account_id?: string | null;
+          liability_id?: string | null;
+          is_active?: boolean;
+          starts_on?: string | null;
+          ends_on?: string | null;
+          notes?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      commitment_month_logs: {
+        Row: {
+          id: string;
+          user_id: string;
+          commitment_id: string;
+          period_month: string;
+          status: string;
+          paid_amount: number | null;
+          paid_date: string | null;
+          transaction_id: string | null;
+          liability_payment_id: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          commitment_id: string;
+          period_month: string;
+          status?: string;
+          paid_amount?: number | null;
+          paid_date?: string | null;
+          transaction_id?: string | null;
+          liability_payment_id?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          status?: string;
+          paid_amount?: number | null;
+          paid_date?: string | null;
           notes?: string | null;
         };
         Relationships: [];

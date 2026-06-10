@@ -16,9 +16,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import MonthSelector from "@/components/shared/MonthSelector";
 import TransactionItem from "@/components/shared/TransactionItem";
-import { getMonthlySummary, getProfile, getUserSettings, getFinancialOverviewData, getCreditCardSummary } from "@/lib/supabase/queries";
+import { getMonthlySummary, getProfile, getUserSettings, getFinancialOverviewData, getCreditCardSummary, getMonthlyCommitmentSummary, toPeriodMonth } from "@/lib/supabase/queries";
 import { formatCurrency } from "@/lib/utils";
-import type { Transaction, FinancialOverview } from "@/types";
+import type { Transaction, FinancialOverview, MonthlyCommitmentSummary } from "@/types";
 
 export default function DashboardPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -46,21 +46,25 @@ export default function DashboardPage() {
     purchases: number;
     payments: number;
   } | null>(null);
+  const [commitmentSummary, setCommitmentSummary] = useState<MonthlyCommitmentSummary | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    const periodMonth = toPeriodMonth(currentMonth);
     Promise.all([
       getMonthlySummary(currentMonth.getMonth(), currentMonth.getFullYear()),
       getProfile(),
       getUserSettings(),
       getFinancialOverviewData(),
       getCreditCardSummary(currentMonth.getMonth(), currentMonth.getFullYear()),
+      getMonthlyCommitmentSummary(periodMonth),
     ])
-      .then(([summary, profile, settings, fin, cards]) => {
+      .then(([summary, profile, settings, fin, cards, commitments]) => {
         setName(profile?.name ?? "tú");
         setSavingsGoal(settings?.savings_goal ?? 0);
         setOverview(fin.overview);
         setCardSummary({ totalDebt: cards.totalDebt, activeCount: cards.activeCount, purchases: cards.purchases, payments: cards.payments });
+        setCommitmentSummary(commitments);
         setMonthlyData({
           totalIncome: summary.totalIncome,
           totalExpenses: summary.totalExpenses,
@@ -204,6 +208,59 @@ export default function DashboardPage() {
           </p>
         </div>
       </div>
+
+      {/* Compromisos del mes */}
+      {commitmentSummary && commitmentSummary.total > 0 && (
+        <div className="px-5 mb-4">
+          <Link href="/compromisos">
+            <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🗓️</span>
+                  <span className="text-sm font-semibold text-zinc-700">Compromisos del mes</span>
+                </div>
+                <ChevronRight className="size-4 text-zinc-400" />
+              </div>
+              {/* Free cash */}
+              {(() => {
+                const pending = commitmentSummary.totalPending + commitmentSummary.totalOverdue;
+                const freeCash = overview.availableToSpend - pending;
+                return (
+                  <div className="mb-3">
+                    <p className="text-[10px] text-zinc-400 uppercase tracking-wide mb-0.5">Dinero libre estimado</p>
+                    <p className={`text-xl font-bold ${freeCash >= 0 ? "text-violet-700" : "text-rose-600"}`}>
+                      {formatCurrency(freeCash)}
+                    </p>
+                  </div>
+                );
+              })()}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Comprometido</p>
+                  <p className="text-sm font-bold text-zinc-600">{formatCurrency(commitmentSummary.total)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Pagado</p>
+                  <p className="text-sm font-bold text-emerald-600">{formatCurrency(commitmentSummary.totalPaid)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-400 uppercase tracking-wide">
+                    {commitmentSummary.totalOverdue > 0 ? "Vencido ⚠️" : "Pendiente"}
+                  </p>
+                  <p className={`text-sm font-bold ${commitmentSummary.totalOverdue > 0 ? "text-rose-600" : "text-amber-600"}`}>
+                    {formatCurrency(commitmentSummary.totalPending + commitmentSummary.totalOverdue)}
+                  </p>
+                </div>
+              </div>
+              {commitmentSummary.nextDue && (
+                <p className="text-xs text-zinc-400 mt-3">
+                  Próximo: <span className="font-medium text-zinc-600">{commitmentSummary.nextDue.name}</span> el día {commitmentSummary.nextDue.due_day}
+                </p>
+              )}
+            </div>
+          </Link>
+        </div>
+      )}
 
       {/* Tarjetas de crédito */}
       {cardSummary && cardSummary.activeCount > 0 && (

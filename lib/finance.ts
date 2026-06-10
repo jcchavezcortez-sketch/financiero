@@ -1,4 +1,5 @@
-import type { Account, Liability, FinancialOverview } from "@/types";
+import type { Account, Liability, FinancialOverview, CommitmentWithStatus, CommitmentStatus } from "@/types";
+import { DEBT_COMMITMENT_TYPES, SAVINGS_COMMITMENT_TYPES } from "@/types";
 
 // Accounts whose type implies they should NOT count as liquid cash by default.
 // The DB flag `include_in_available_balance` is the source of truth; this is
@@ -107,4 +108,42 @@ export function getMonthlyDebtPayments(transactions: TxRow[]): number {
 /** Solo gastos de consumo reales (expense + credit_card_purchase) */
 export function getRealConsumptionExpenses(transactions: TxRow[]): number {
   return getMonthlyExpenses(transactions);
+}
+
+// ── Commitment helpers (pure, no DB) ──────────────────────────────────────────
+
+export function getPendingCommitments(commitments: CommitmentWithStatus[]): CommitmentWithStatus[] {
+  return commitments.filter((c) => c.displayStatus === "pending" || c.displayStatus === "overdue");
+}
+
+export function getPaidCommitments(commitments: CommitmentWithStatus[]): CommitmentWithStatus[] {
+  return commitments.filter((c) => c.displayStatus === "paid");
+}
+
+export function getOverdueCommitments(commitments: CommitmentWithStatus[]): CommitmentWithStatus[] {
+  return commitments.filter((c) => c.displayStatus === "overdue");
+}
+
+export function getEstimatedFreeMoney(
+  availableBalance: number,
+  commitments: CommitmentWithStatus[]
+): number {
+  const pending = getPendingCommitments(commitments).reduce((s, c) => s + c.amount, 0);
+  return availableBalance - pending;
+}
+
+export function groupCommitmentsByType(commitments: CommitmentWithStatus[]) {
+  const fixed = commitments.filter(
+    (c) => !DEBT_COMMITMENT_TYPES.has(c.commitment_type) && !SAVINGS_COMMITMENT_TYPES.has(c.commitment_type)
+  );
+  const debt = commitments.filter((c) => DEBT_COMMITMENT_TYPES.has(c.commitment_type));
+  const savings = commitments.filter((c) => SAVINGS_COMMITMENT_TYPES.has(c.commitment_type));
+  return { fixed, debt, savings };
+}
+
+export function getNextDueCommitment(commitments: CommitmentWithStatus[]): CommitmentWithStatus | null {
+  const pending = commitments
+    .filter((c) => c.displayStatus === "pending" && c.due_day !== null)
+    .sort((a, b) => (a.due_day ?? 99) - (b.due_day ?? 99));
+  return pending[0] ?? null;
 }
