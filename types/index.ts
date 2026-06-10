@@ -191,6 +191,105 @@ export interface DailySpending {
   amount: number;
 }
 
+// ── Monthly commitments ───────────────────────────────────────────────────────
+
+export type CommitmentType =
+  | "rent"
+  | "utility"
+  | "subscription"
+  | "insurance"
+  | "debt_minimum"
+  | "credit_card_minimum"
+  | "loan_installment"
+  | "savings_target"
+  | "other";
+
+export type CommitmentStatus = "pending" | "paid" | "skipped" | "overdue";
+
+export interface MonthlyCommitment {
+  id: string;
+  user_id: string;
+  name: string;
+  commitment_type: CommitmentType;
+  amount: number;
+  currency: string;
+  due_day: number | null;
+  category_id: string | null;
+  suggested_account_id: string | null;
+  liability_id: string | null;
+  is_active: boolean;
+  starts_on: string | null;
+  ends_on: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommitmentMonthLog {
+  id: string;
+  user_id: string;
+  commitment_id: string;
+  period_month: string;
+  status: "paid" | "skipped";
+  paid_amount: number | null;
+  paid_date: string | null;
+  transaction_id: string | null;
+  liability_payment_id: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface CommitmentWithStatus extends MonthlyCommitment {
+  log: CommitmentMonthLog | null;
+  displayStatus: CommitmentStatus;
+}
+
+export interface MonthlyCommitmentSummary {
+  total: number;
+  totalPaid: number;
+  totalPending: number;
+  totalOverdue: number;
+  totalSkipped: number;
+  fixedExpensesPending: number;
+  debtMinimumsPending: number;
+  plannedSavingsPending: number;
+  nextDue: CommitmentWithStatus | null;
+}
+
+export interface FreeCashFlowSummary {
+  availableBalance: number;
+  protectedSavings: number;
+  totalDebt: number;
+  creditCardDebt: number;
+  fixedCommitmentsPending: number;
+  debtMinimumsPending: number;
+  plannedSavingsPending: number;
+  totalCommitmentsPending: number;
+  freeCashEstimated: number;
+}
+
+export const COMMITMENT_TYPE_META: Record<CommitmentType, { label: string; emoji: string; isDebt: boolean; isSavings: boolean }> = {
+  rent:                { label: "Alquiler",            emoji: "🏠", isDebt: false, isSavings: false },
+  utility:             { label: "Servicio básico",     emoji: "⚡", isDebt: false, isSavings: false },
+  subscription:        { label: "Suscripción",         emoji: "📱", isDebt: false, isSavings: false },
+  insurance:           { label: "Seguro",              emoji: "🛡️", isDebt: false, isSavings: false },
+  debt_minimum:        { label: "Pago mínimo deuda",   emoji: "💳", isDebt: true,  isSavings: false },
+  credit_card_minimum: { label: "Pago mínimo tarjeta", emoji: "💳", isDebt: true,  isSavings: false },
+  loan_installment:    { label: "Cuota préstamo",      emoji: "🏦", isDebt: true,  isSavings: false },
+  savings_target:      { label: "Ahorro planificado",  emoji: "🐷", isDebt: false, isSavings: true  },
+  other:               { label: "Otro gasto fijo",     emoji: "📋", isDebt: false, isSavings: false },
+};
+
+export const DEBT_COMMITMENT_TYPES = new Set<CommitmentType>([
+  "debt_minimum",
+  "credit_card_minimum",
+  "loan_installment",
+]);
+
+export const SAVINGS_COMMITMENT_TYPES = new Set<CommitmentType>([
+  "savings_target",
+]);
+
 // ── Movement type metadata ────────────────────────────────────────────────────
 
 export const MOVEMENT_META: Record<MovementType, { label: string; emoji: string; color: string }> = {
