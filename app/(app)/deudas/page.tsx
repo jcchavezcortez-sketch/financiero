@@ -126,6 +126,7 @@ export default function DeudasPage() {
 
   const [submitted, setSubmitted] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [cardFormError, setCardFormError] = useState<string | null>(null);
 
   const cardForm = useForm<CreditCardForm>({ resolver: zodResolver(creditCardSchema) });
   const liabilityForm = useForm<LiabilityForm>({ resolver: zodResolver(liabilitySchema) });
@@ -165,6 +166,7 @@ export default function DeudasPage() {
     setEditingCard(null);
     cardForm.reset({ name: "", institution_name: "", card_network: "", last_four_digits: "", credit_limit: "", current_balance: "0", statement_closing_day: "", payment_due_day: "", minimum_payment: "", notes: "" });
     setSubmitted(false);
+    setCardFormError(null);
     setShowCardForm(true);
   }
 
@@ -183,11 +185,13 @@ export default function DeudasPage() {
       notes: card.notes ?? "",
     });
     setSubmitted(false);
+    setCardFormError(null);
     setShowCardForm(true);
   }
 
   const onSubmitCard = async (data: CreditCardForm) => {
     setSubmitted(false);
+    setCardFormError(null);
     try {
       if (editingCard) {
         await updateCreditCard(editingCard.account_id, editingCard.liability_id, {
@@ -218,7 +222,9 @@ export default function DeudasPage() {
       setSubmitted(true);
       await load();
       setTimeout(() => { setShowCardForm(false); setSubmitted(false); }, 1500);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      setCardFormError(e instanceof Error ? e.message : "Error al guardar la tarjeta");
+    }
   };
 
   async function handleDeleteCard(card: CreditCardWithLiability) {
@@ -641,7 +647,7 @@ export default function DeudasPage() {
       </Tabs>
 
       {/* ── Sheet: Tarjeta (add/edit) ──────────────────────────────────────── */}
-      <Sheet open={showCardForm} onOpenChange={setShowCardForm}>
+      <Sheet open={showCardForm} onOpenChange={(open) => { setShowCardForm(open); if (!open) setCardFormError(null); }}>
         <SheetContent side="bottom" className="max-h-[95vh] overflow-y-auto">
           <SheetHeader>
             <SheetTitle>{editingCard ? "Editar tarjeta" : "Nueva tarjeta de crédito"}</SheetTitle>
@@ -653,6 +659,11 @@ export default function DeudasPage() {
             </div>
           ) : (
             <div className="px-1 py-4 space-y-4">
+              {cardFormError && (
+                <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-700">
+                  {cardFormError}
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label>Nombre de tarjeta *</Label>
                 <Input placeholder="Ej. Visa BCP, Interbank MC..." {...cardForm.register("name")} />

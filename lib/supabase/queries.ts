@@ -236,7 +236,7 @@ export async function getTransactions(filters?: {
 
   let query = supabase
     .from("transactions")
-    .select("*, category:categories(name, icon, color), account:accounts(name, icon)")
+    .select("*, category:categories(name, icon, color), account:accounts!account_id(name, icon)")
     .eq("user_id", user.id)
     .order("date", { ascending: false })
     .order("created_at", { ascending: false });
@@ -551,7 +551,7 @@ export async function insertCreditCard(values: {
     name: values.name,
     creditor_name: values.institution_name ?? null,
     current_balance: values.current_balance,
-    original_amount: values.current_balance,
+    original_amount: values.current_balance > 0 ? values.current_balance : null,
     minimum_payment: values.minimum_payment ?? null,
     notes: values.notes ?? null,
     status: values.current_balance > 0 ? "active" : "paid",
