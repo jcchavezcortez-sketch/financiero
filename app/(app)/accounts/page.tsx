@@ -101,7 +101,9 @@ export default function AccountsPage() {
   const [showAddLiability, setShowAddLiability] = useState(false);
   const [editingLiability, setEditingLiability] = useState<LiabilityRow | null>(null);
   const [accountSubmitted, setAccountSubmitted] = useState(false);
+  const [accountError, setAccountError] = useState<string | null>(null);
   const [liabilitySubmitted, setLiabilitySubmitted] = useState(false);
+  const [liabilityError, setLiabilityError] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [liabilities, setLiabilities] = useState<LiabilityRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,6 +168,7 @@ export default function AccountsPage() {
       }
       const updated = await getAccounts();
       setAccounts(updated);
+      setAccountError(null);
       setAccountSubmitted(true);
       setTimeout(() => {
         setShowAddAccount(false);
@@ -174,6 +177,7 @@ export default function AccountsPage() {
       }, 1500);
     } catch (e) {
       console.error(e);
+      setAccountError(e instanceof Error ? e.message : "No se pudo guardar la cuenta. Intenta de nuevo.");
     }
   };
 
@@ -202,6 +206,7 @@ export default function AccountsPage() {
       }
       const updated = await getLiabilities();
       setLiabilities(updated);
+      setLiabilityError(null);
       setLiabilitySubmitted(true);
       setTimeout(() => {
         setShowAddLiability(false);
@@ -211,6 +216,7 @@ export default function AccountsPage() {
       }, 1500);
     } catch (e) {
       console.error(e);
+      setLiabilityError(e instanceof Error ? e.message : "No se pudo guardar la deuda. Intenta de nuevo.");
     }
   };
 
@@ -491,6 +497,7 @@ export default function AccountsPage() {
           setShowAddAccount(open);
           if (!open) {
             setAccountSubmitted(false);
+            setAccountError(null);
             accountForm.reset();
           }
         }}
@@ -509,6 +516,11 @@ export default function AccountsPage() {
           ) : (
             <>
               <div className="px-6 py-4 space-y-4 overflow-y-auto">
+                {accountError && (
+                  <div className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3">
+                    <p className="text-sm text-rose-600">{accountError}</p>
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label>Nombre</Label>
                   <Input
@@ -648,6 +660,7 @@ export default function AccountsPage() {
           if (!open) {
             setEditingLiability(null);
             setLiabilitySubmitted(false);
+            setLiabilityError(null);
             liabilityForm.reset();
           }
         }}
@@ -668,6 +681,11 @@ export default function AccountsPage() {
             </div>
           ) : (
             <div className="space-y-4 pb-2">
+              {liabilityError && (
+                <div className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3">
+                  <p className="text-sm text-rose-600">{liabilityError}</p>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label>Nombre de la deuda</Label>
                 <Input
