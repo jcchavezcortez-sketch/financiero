@@ -543,7 +543,15 @@ export async function insertCreditCard(values: {
     card_network: values.card_network ?? null,
     last_four_digits: values.last_four_digits ?? null,
   }).select("id").single();
-  if (accErr) throw accErr;
+  if (accErr) {
+    console.error("[insertCreditCard] accounts insert failed:", accErr);
+    throw new Error(`No se pudo crear la cuenta de tarjeta: ${accErr.message}`);
+  }
+
+  // original_amount: use current_balance if > 0, otherwise credit_limit (avoids NOT NULL violation on original schema)
+  const originalAmount = values.current_balance > 0
+    ? values.current_balance
+    : (values.credit_limit ?? null);
 
   const { error: liabErr } = await supabase.from("liabilities").insert({
     user_id: user.id,
@@ -551,13 +559,18 @@ export async function insertCreditCard(values: {
     name: values.name,
     creditor_name: values.institution_name ?? null,
     current_balance: values.current_balance,
-    original_amount: values.current_balance > 0 ? values.current_balance : null,
+    original_amount: originalAmount,
     minimum_payment: values.minimum_payment ?? null,
     notes: values.notes ?? null,
     status: values.current_balance > 0 ? "active" : "paid",
     linked_account_id: account.id,
   });
-  if (liabErr) throw liabErr;
+  if (liabErr) {
+    console.error("[insertCreditCard] liabilities insert failed:", liabErr);
+    // Rollback: deactivate the account that was just created
+    await supabase.from("accounts").update({ is_active: false }).eq("id", account.id);
+    throw new Error(`La tarjeta se creó pero falló la deuda asociada (se revirtió): ${liabErr.message}`);
+  }
 
   return account;
 }
