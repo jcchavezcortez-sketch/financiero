@@ -45,6 +45,7 @@ import {
   upsertProfile,
   upsertUserSettings,
   signOut,
+  deleteAllUserData,
 } from "@/lib/supabase/queries";
 
 const isSupabaseConfigured = !!(
@@ -78,6 +79,9 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState(mockUser.email);
   const [userName, setUserName] = useState(mockUser.name);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const profileForm = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
@@ -169,6 +173,31 @@ export default function SettingsPage() {
     }
     router.push("/login");
     router.refresh();
+  };
+
+  const handleDelete = async () => {
+    if (deleteConfirmInput !== "ELIMINAR") {
+      setDeleteError("Debes escribir ELIMINAR para confirmar");
+      return;
+    }
+
+    setDeleteLoading(true);
+    setDeleteError(null);
+
+    try {
+      if (isSupabaseConfigured) {
+        await deleteAllUserData();
+      }
+      setShowDeleteDialog(false);
+      setDeleteConfirmInput("");
+      router.push("/login");
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error desconocido";
+      setDeleteError(message);
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   const initials = userName
@@ -370,27 +399,63 @@ export default function SettingsPage() {
       </div>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent>
+      <Dialog open={showDeleteDialog} onOpenChange={(open) => {
+        setShowDeleteDialog(open);
+        if (!open) {
+          setDeleteConfirmInput("");
+          setDeleteError(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>¿Eliminar todos los datos?</DialogTitle>
+            <DialogTitle>Eliminar todos mis datos</DialogTitle>
             <DialogDescription>
-              Esta acción es irreversible. Se eliminarán todas tus cuentas,
-              movimientos y configuraciones. ¿Estás seguro?
+              ⚠️ Esta acción es <span className="font-bold text-rose-600">irreversible</span>.
+              Se eliminarán permanentemente todas tus cuentas, movimientos, deudas,
+              compromisos y configuraciones. No se puede deshacer.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-rose-50 border border-rose-200 rounded-lg p-4">
+              <p className="text-sm text-rose-800">
+                💾 Tu perfil y email se mantendrán para que puedas volver a iniciar sesión,
+                pero todos tus datos financieros se borrarán.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold">
+                Escribe <span className="text-rose-600">ELIMINAR</span> para confirmar
+              </Label>
+              <Input
+                type="text"
+                placeholder="Escribe ELIMINAR"
+                value={deleteConfirmInput}
+                onChange={(e) => {
+                  setDeleteConfirmInput(e.target.value);
+                  setDeleteError(null);
+                }}
+                disabled={deleteLoading}
+                className="font-mono"
+              />
+            </div>
+            {deleteError && (
+              <p className="text-xs text-rose-500 font-medium">{deleteError}</p>
+            )}
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteDialog(false)}
+              disabled={deleteLoading}
+            >
               Cancelar
             </Button>
             <Button
               variant="destructive"
-              onClick={() => {
-                setShowDeleteDialog(false);
-                router.push("/login");
-              }}
+              onClick={handleDelete}
+              disabled={deleteConfirmInput !== "ELIMINAR" || deleteLoading}
             >
-              Sí, eliminar todo
+              {deleteLoading ? "Eliminando..." : "Sí, eliminar mis datos"}
             </Button>
           </DialogFooter>
         </DialogContent>

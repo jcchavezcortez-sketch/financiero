@@ -539,6 +539,10 @@ export interface Database {
         Args: { p_user_id: string };
         Returns: string;
       };
+      delete_all_user_data: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
     };
     Enums: {
       [_ in never]: never;

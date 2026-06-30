@@ -1264,3 +1264,17 @@ export async function getFreeCashFlowSummary(periodMonth: string): Promise<FreeC
     freeCashEstimated,
   };
 }
+
+// ── User data deletion ───────────────────────────────────────────────────────
+
+export async function deleteAllUserData(): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { error } = await supabase.rpc("delete_all_user_data");
+  if (error) {
+    console.error("[deleteAllUserData] RPC failed:", error);
+    throw new Error(`No se pudieron eliminar los datos: ${error.message}`);
+  }
+}
