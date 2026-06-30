@@ -526,6 +526,88 @@ export interface Database {
         };
         Relationships: [];
       };
+      monthly_income_sources: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          amount: number;
+          currency: string;
+          source_type: string;
+          expected_day: number | null;
+          expected_account_id: string | null;
+          category_id: string | null;
+          is_active: boolean;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          amount: number;
+          currency?: string;
+          source_type: string;
+          expected_day?: number | null;
+          expected_account_id?: string | null;
+          category_id?: string | null;
+          is_active?: boolean;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          amount?: number;
+          currency?: string;
+          source_type?: string;
+          expected_day?: number | null;
+          expected_account_id?: string | null;
+          category_id?: string | null;
+          is_active?: boolean;
+          notes?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      monthly_income_logs: {
+        Row: {
+          id: string;
+          user_id: string;
+          income_source_id: string;
+          period_month: string;
+          status: string;
+          received_amount: number | null;
+          received_date: string | null;
+          transaction_id: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          income_source_id: string;
+          period_month: string;
+          status?: string;
+          received_amount?: number | null;
+          received_date?: string | null;
+          transaction_id?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: string;
+          received_amount?: number | null;
+          received_date?: string | null;
+          transaction_id?: string | null;
+          notes?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       import_rows: {
         Row: {
           id: string;
@@ -586,6 +668,14 @@ export interface Database {
           current_spending: number;
           percentage_used: number;
           is_over_budget: boolean;
+        }[];
+      };
+      get_monthly_income_summary: {
+        Args: Record<string, never>;
+        Returns: {
+          expected_total: number;
+          received_total: number;
+          pending_total: number;
         }[];
       };
     };

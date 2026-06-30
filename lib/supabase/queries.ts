@@ -1362,3 +1362,160 @@ export async function getCategoryBudgetSpending(
   }
   return data?.[0] || null;
 }
+
+// ── Monthly Income Sources ──────────────────────────────────────────────────
+
+export async function getMonthlyIncomeSources(): Promise<
+  Database["public"]["Tables"]["monthly_income_sources"]["Row"][]
+> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { data, error } = await supabase
+    .from("monthly_income_sources")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("expected_day", { ascending: true });
+
+  if (error) throw new Error(`No se pudieron obtener las fuentes de ingresos: ${error.message}`);
+  return data || [];
+}
+
+export async function upsertMonthlyIncomeSource(payload: {
+  name: string;
+  amount: number;
+  source_type: string;
+  expected_day?: number;
+  expected_account_id?: string | null;
+  category_id?: string | null;
+  is_active?: boolean;
+  notes?: string | null;
+}): Promise<Database["public"]["Tables"]["monthly_income_sources"]["Row"]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { data, error } = await supabase
+    .from("monthly_income_sources")
+    .insert({
+      user_id: user.id,
+      ...payload,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(`No se pudo guardar la fuente de ingreso: ${error.message}`);
+  return data;
+}
+
+export async function updateMonthlyIncomeSource(
+  sourceId: string,
+  payload: Partial<{
+    name: string;
+    amount: number;
+    source_type: string;
+    expected_day: number;
+    expected_account_id: string | null;
+    category_id: string | null;
+    is_active: boolean;
+    notes: string | null;
+  }>
+): Promise<Database["public"]["Tables"]["monthly_income_sources"]["Row"]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { data, error } = await supabase
+    .from("monthly_income_sources")
+    .update(payload)
+    .eq("id", sourceId)
+    .eq("user_id", user.id)
+    .select()
+    .single();
+
+  if (error) throw new Error(`No se pudo actualizar la fuente de ingreso: ${error.message}`);
+  return data;
+}
+
+export async function deleteMonthlyIncomeSource(sourceId: string): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { error } = await supabase
+    .from("monthly_income_sources")
+    .delete()
+    .eq("id", sourceId)
+    .eq("user_id", user.id);
+
+  if (error) throw new Error(`No se pudo eliminar la fuente de ingreso: ${error.message}`);
+}
+
+export async function getMonthlyIncomeLogs(periodMonth?: string): Promise<
+  Database["public"]["Tables"]["monthly_income_logs"]["Row"][]
+> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  let query = supabase
+    .from("monthly_income_logs")
+    .select("*")
+    .eq("user_id", user.id);
+
+  if (periodMonth) {
+    query = query.eq("period_month", periodMonth);
+  }
+
+  const { data, error } = await query.order("period_month", { ascending: false });
+
+  if (error) throw new Error(`No se pudieron obtener los registros de ingreso: ${error.message}`);
+  return data || [];
+}
+
+export async function markIncomeAsReceived(
+  incomeLogId: string,
+  receivedAmount: number,
+  receivedDate: string,
+  transactionId?: string | null
+): Promise<Database["public"]["Tables"]["monthly_income_logs"]["Row"]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { data, error } = await supabase
+    .from("monthly_income_logs")
+    .update({
+      status: "received",
+      received_amount: receivedAmount,
+      received_date: receivedDate,
+      transaction_id: transactionId || null,
+    })
+    .eq("id", incomeLogId)
+    .eq("user_id", user.id)
+    .select()
+    .single();
+
+  if (error) throw new Error(`No se pudo marcar el ingreso como recibido: ${error.message}`);
+  return data;
+}
+
+export async function getMonthlyIncomeSummary(): Promise<{
+  expected_total: number;
+  received_total: number;
+  pending_total: number;
+}> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { data, error } = await supabase.rpc("get_monthly_income_summary");
+
+  if (error) {
+    console.error("[getMonthlyIncomeSummary] RPC failed:", error);
+    throw new Error(`No se pudo obtener el resumen de ingresos: ${error.message}`);
+  }
+
+  return data?.[0] || { expected_total: 0, received_total: 0, pending_total: 0 };
+}
