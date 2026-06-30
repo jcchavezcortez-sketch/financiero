@@ -491,6 +491,41 @@ export interface Database {
         };
         Relationships: [];
       };
+      category_budgets: {
+        Row: {
+          id: string;
+          user_id: string;
+          category_id: string;
+          monthly_limit: number;
+          currency: string;
+          alert_threshold: number;
+          is_active: boolean;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          category_id: string;
+          monthly_limit: number;
+          currency?: string;
+          alert_threshold?: number;
+          is_active?: boolean;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          monthly_limit?: number;
+          currency?: string;
+          alert_threshold?: number;
+          is_active?: boolean;
+          notes?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       import_rows: {
         Row: {
           id: string;
@@ -542,6 +577,16 @@ export interface Database {
       delete_all_user_data: {
         Args: Record<string, never>;
         Returns: undefined;
+      };
+      get_category_budget_spending: {
+        Args: { p_category_id: string };
+        Returns: {
+          budget_id: string;
+          monthly_limit: number;
+          current_spending: number;
+          percentage_used: number;
+          is_over_budget: boolean;
+        }[];
       };
     };
     Enums: {

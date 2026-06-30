@@ -1278,3 +1278,87 @@ export async function deleteAllUserData(): Promise<void> {
     throw new Error(`No se pudieron eliminar los datos: ${error.message}`);
   }
 }
+
+// ── Category Budgets ────────────────────────────────────────────────────────
+
+export async function getCategoryBudgets(): Promise<
+  Database["public"]["Tables"]["category_budgets"]["Row"][]
+> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { data, error } = await supabase
+    .from("category_budgets")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at");
+
+  if (error) throw new Error(`No se pudieron obtener los presupuestos: ${error.message}`);
+  return data || [];
+}
+
+export async function upsertCategoryBudget(payload: {
+  category_id: string;
+  monthly_limit: number;
+  alert_threshold?: number;
+  is_active?: boolean;
+  notes?: string | null;
+}): Promise<Database["public"]["Tables"]["category_budgets"]["Row"]> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { data, error } = await supabase
+    .from("category_budgets")
+    .upsert(
+      {
+        user_id: user.id,
+        ...payload,
+      },
+      { onConflict: "user_id,category_id" }
+    )
+    .select()
+    .single();
+
+  if (error) throw new Error(`No se pudo guardar el presupuesto: ${error.message}`);
+  return data;
+}
+
+export async function deleteCategoryBudget(budgetId: string): Promise<void> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { error } = await supabase
+    .from("category_budgets")
+    .delete()
+    .eq("id", budgetId)
+    .eq("user_id", user.id);
+
+  if (error) throw new Error(`No se pudo eliminar el presupuesto: ${error.message}`);
+}
+
+export async function getCategoryBudgetSpending(
+  categoryId: string
+): Promise<{
+  budget_id: string;
+  monthly_limit: number;
+  current_spending: number;
+  percentage_used: number;
+  is_over_budget: boolean;
+} | null> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No autenticado");
+
+  const { data, error } = await supabase.rpc("get_category_budget_spending", {
+    p_category_id: categoryId,
+  });
+
+  if (error) {
+    console.error("[getCategoryBudgetSpending] RPC failed:", error);
+    return null;
+  }
+  return data?.[0] || null;
+}
