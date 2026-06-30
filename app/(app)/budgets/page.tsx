@@ -276,13 +276,11 @@ export default function BudgetsPage() {
                       <SelectValue placeholder="Selecciona una categoría" />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories
-                        .filter((c) => EXPENSE_CATEGORIES.some((ec) => ec.id === c.id))
-                        .map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            {cat.icon} {cat.name}
-                          </SelectItem>
-                        ))}
+                      {categories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.icon} {cat.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   {budgetForm.formState.errors.category_id && (

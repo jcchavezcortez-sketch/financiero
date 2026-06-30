@@ -32,11 +32,14 @@ import {
   getMonthlyIncomeLogs,
   markIncomeAsReceived,
   getMonthlyIncomeSummary,
+  getAccounts,
+  insertTransaction,
 } from "@/lib/supabase/queries";
 import type { Database } from "@/types/database";
 
 type IncomeSourceRow = Database["public"]["Tables"]["monthly_income_sources"]["Row"];
 type IncomeLogRow = Database["public"]["Tables"]["monthly_income_logs"]["Row"];
+type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
 
 const INCOME_TYPES = [
   { id: "salary", name: "Sueldo" },
@@ -61,7 +64,9 @@ export default function IncomesPage() {
   const [sources, setSources] = useState<IncomeSourceRow[]>([]);
   const [logs, setLogs] = useState<IncomeLogRow[]>([]);
   const [summary, setSummary] = useState<any>(null);
+  const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [showAddSource, setShowAddSource] = useState(false);
   const [showMarkReceived, setShowMarkReceived] = useState(false);
   const [selectedLog, setSelectedLog] = useState<IncomeLogRow | null>(null);
@@ -78,11 +83,16 @@ export default function IncomesPage() {
       getMonthlyIncomeSources(),
       getMonthlyIncomeLogs(selectedMonth.toISOString().split("T")[0]),
       getMonthlyIncomeSummary(),
+      getAccounts(),
     ])
-      .then(([srcs, lgs, summ]) => {
+      .then(([srcs, lgs, summ, accs]) => {
         setSources(srcs);
         setLogs(lgs);
         setSummary(summ);
+        setAccounts(accs);
+        if (accs.length > 0 && !selectedAccountId) {
+          setSelectedAccountId(accs[0].id);
+        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -114,9 +124,20 @@ export default function IncomesPage() {
   };
 
   const handleMarkReceived = async (amount: number, date: string) => {
-    if (!selectedLog) return;
+    if (!selectedLog || !selectedAccountId) return;
     try {
+      // Create transaction
+      await insertTransaction({
+        account_id: selectedAccountId,
+        type: "income",
+        amount: amount,
+        description: `Ingreso recibido`,
+        date: date,
+      });
+
+      // Mark as received
       await markIncomeAsReceived(selectedLog.id, amount, date);
+
       const updated = await getMonthlyIncomeLogs(
         selectedMonth.toISOString().split("T")[0]
       );
@@ -435,6 +456,21 @@ export default function IncomesPage() {
           {selectedLog && (
             <div className="space-y-4 py-4">
               <div>
+                <Label className="text-sm">Cuenta destino</Label>
+                <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder="Selecciona cuenta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((acc) => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        {acc.icon} {acc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
                 <Label className="text-sm">Monto recibido</Label>
                 <div className="relative mt-1.5">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 font-semibold text-sm">
@@ -444,7 +480,6 @@ export default function IncomesPage() {
                     type="number"
                     id="amount-input"
                     placeholder="0"
-                    defaultValue={selectedLog.income_source_id}
                     className="pl-9"
                   />
                 </div>

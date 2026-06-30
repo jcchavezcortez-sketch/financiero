@@ -295,9 +295,9 @@ export default function AccountsPage() {
 
         {/* ── Tab: Cuentas ── */}
         <TabsContent value="accounts">
-          <div className="flex justify-end mb-4">
-            <Button size="sm" onClick={() => setShowAddAccount(true)} className="gap-1.5">
-              <Plus className="size-4" />
+          <div className="flex justify-end mb-5">
+            <Button onClick={() => setShowAddAccount(true)} className="gap-2">
+              <Plus className="size-5" />
               Agregar cuenta
             </Button>
           </div>
