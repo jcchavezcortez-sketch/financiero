@@ -8,17 +8,18 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(amount: number, currency: string = "PEN"): string {
+  const prefix = amount < 0 ? "-" : "";
   if (currency === "PEN") {
-    return `S/ ${Math.abs(amount).toLocaleString("es-PE", {
+    return `${prefix}S/ ${Math.abs(amount).toLocaleString("es-PE", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
   }
-  return new Intl.NumberFormat("es-PE", {
+  return `${prefix}${new Intl.NumberFormat("es-PE", {
     style: "currency",
     currency,
     minimumFractionDigits: 2,
-  }).format(Math.abs(amount));
+  }).format(Math.abs(amount))}`;
 }
 
 export function formatDate(date: Date | string): string {

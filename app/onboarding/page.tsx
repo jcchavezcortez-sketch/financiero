@@ -22,6 +22,7 @@ import {
   upsertUserSettings,
   seedDefaultCategories,
   insertAccount,
+  insertCreditCard,
   insertLiability,
   insertFinancialSnapshot,
 } from "@/lib/supabase/queries";
@@ -203,8 +204,7 @@ export default function OnboardingPage() {
 
       // Deuda tarjeta de crédito
       if (Number(data.cardDebt) > 0) {
-        await insertLiability({
-          liability_type: "credit_card",
+        await insertCreditCard({
           name: data.cardName || "Tarjeta de crédito",
           current_balance: Number(data.cardDebt),
         });

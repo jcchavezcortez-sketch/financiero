@@ -37,6 +37,7 @@ import {
   toPeriodMonth,
   getAccounts,
   getLiabilities,
+  getCategories,
 } from "@/lib/supabase/queries";
 import type { Database } from "@/types/database";
 import type {
@@ -48,6 +49,10 @@ import { COMMITMENT_TYPE_META, DEBT_COMMITMENT_TYPES, SAVINGS_COMMITMENT_TYPES }
 
 type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
 type LiabilityRow = Database["public"]["Tables"]["liabilities"]["Row"];
+<<<<<<< HEAD
+=======
+type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
+>>>>>>> main
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -104,6 +109,10 @@ export default function CompromisosPage() {
   const [cashFlow, setCashFlow] = useState<FreeCashFlowSummary | null>(null);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [liabilities, setLiabilities] = useState<LiabilityRow[]>([]);
+<<<<<<< HEAD
+=======
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
+>>>>>>> main
   const [error, setError] = useState<string | null>(null);
 
   // Sheets
@@ -122,16 +131,28 @@ export default function CompromisosPage() {
     setLoading(true);
     setError(null);
     try {
+<<<<<<< HEAD
       const [cs, cf, accs, liabs] = await Promise.all([
+=======
+      const [cs, cf, accs, liabs, cats] = await Promise.all([
+>>>>>>> main
         getCommitmentsWithStatus(periodMonth),
         getFreeCashFlowSummary(periodMonth),
         getAccounts(),
         getLiabilities("active"),
+<<<<<<< HEAD
+=======
+        getCategories("expense"),
+>>>>>>> main
       ]);
       setCommitments(cs);
       setCashFlow(cf);
       setAccounts(accs);
       setLiabilities(liabs);
+<<<<<<< HEAD
+=======
+      setCategories(cats);
+>>>>>>> main
     } catch (e) {
       setError("Error al cargar datos");
       console.error(e);
@@ -577,6 +598,14 @@ export default function CompromisosPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="no_category">Sin categoría</SelectItem>
+<<<<<<< HEAD
+=======
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.icon} {c.name}
+                      </SelectItem>
+                    ))}
+>>>>>>> main
                   </SelectContent>
                 </Select>
               </div>
