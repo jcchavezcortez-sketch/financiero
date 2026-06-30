@@ -105,6 +105,8 @@ export default function AccountsPage() {
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [liabilities, setLiabilities] = useState<LiabilityRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [liabilityError, setLiabilityError] = useState<string | null>(null);
 
   const accountForm = useForm<AddAccountForm>({
     resolver: zodResolver(addAccountSchema),
@@ -138,6 +140,7 @@ export default function AccountsPage() {
 
   const onAddAccount = async (data: AddAccountForm) => {
     const accountType = ACCOUNT_TYPES.find((t) => t.id === data.type);
+    setAccountError(null);
     try {
       if (data.type === "credit_card") {
         await insertCreditCard({
@@ -173,11 +176,13 @@ export default function AccountsPage() {
         accountForm.reset();
       }, 1500);
     } catch (e) {
-      console.error(e);
+      const message = e instanceof Error ? e.message : "Error desconocido al agregar cuenta";
+      setAccountError(message);
     }
   };
 
   const onAddLiability = async (data: AddLiabilityForm) => {
+    setLiabilityError(null);
     try {
       if (editingLiability) {
         await updateLiability(editingLiability.id, {
@@ -210,7 +215,8 @@ export default function AccountsPage() {
         liabilityForm.reset();
       }, 1500);
     } catch (e) {
-      console.error(e);
+      const message = e instanceof Error ? e.message : "Error desconocido al agregar deuda";
+      setLiabilityError(message);
     }
   };
 
@@ -491,6 +497,7 @@ export default function AccountsPage() {
           setShowAddAccount(open);
           if (!open) {
             setAccountSubmitted(false);
+            setAccountError(null);
             accountForm.reset();
           }
         }}
@@ -508,6 +515,11 @@ export default function AccountsPage() {
             </div>
           ) : (
             <>
+              {accountError && (
+                <div className="mx-6 mt-4 p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                  <p className="text-sm text-rose-600 font-medium">{accountError}</p>
+                </div>
+              )}
               <div className="px-6 py-4 space-y-4 overflow-y-auto">
                 <div className="space-y-1.5">
                   <Label>Nombre</Label>
@@ -648,6 +660,7 @@ export default function AccountsPage() {
           if (!open) {
             setEditingLiability(null);
             setLiabilitySubmitted(false);
+            setLiabilityError(null);
             liabilityForm.reset();
           }
         }}
@@ -667,7 +680,13 @@ export default function AccountsPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-4 pb-2">
+            <>
+              {liabilityError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg mb-4">
+                  <p className="text-sm text-rose-600 font-medium">{liabilityError}</p>
+                </div>
+              )}
+              <div className="space-y-4 pb-2">
               <div className="space-y-1.5">
                 <Label>Nombre de la deuda</Label>
                 <Input
@@ -773,7 +792,8 @@ export default function AccountsPage() {
                   ? "Guardar cambios"
                   : "Agregar deuda"}
               </Button>
-            </div>
+              </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
