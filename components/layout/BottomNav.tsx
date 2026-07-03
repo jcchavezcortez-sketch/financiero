@@ -22,6 +22,7 @@ const navItems = [
 ];
 
 const moreItems = [
+  { href: "/accounts",      label: "🏦 Cuentas" },
   { href: "/balance",       label: "📈 Saldo por mes" },
   { href: "/budgets",       label: "📊 Presupuestos" },
   { href: "/gastos-fijos",  label: "💸 Gastos fijos" },
