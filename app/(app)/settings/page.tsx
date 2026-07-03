@@ -46,6 +46,7 @@ import {
   upsertUserSettings,
   signOut,
   deleteAllUserData,
+  getTransactions,
 } from "@/lib/supabase/queries";
 
 const isSupabaseConfigured = !!(
@@ -156,14 +157,29 @@ export default function SettingsPage() {
     }
   });
 
-  const handleExport = () => {
-    const data = "fecha,descripcion,categoria,cuenta,tipo,monto\n";
-    const blob = new Blob([data], { type: "text/csv" });
+  const handleExport = async () => {
+    const escapeCsv = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    let rows = "fecha,descripcion,categoria,cuenta,tipo,monto\n";
+    if (isSupabaseConfigured) {
+      const transactions = await getTransactions();
+      for (const t of transactions) {
+        rows += [
+          t.date,
+          escapeCsv(t.description ?? ""),
+          escapeCsv(t.category?.name ?? ""),
+          escapeCsv(t.account?.name ?? ""),
+          t.type,
+          String(t.amount),
+        ].join(",") + "\n";
+      }
+    }
+    const blob = new Blob(["﻿" + rows], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = "finanzas-juani-export.csv";
     link.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleLogout = async () => {

@@ -27,6 +27,7 @@ const moreItems = [
   { href: "/budgets",       label: "📊 Presupuestos" },
   { href: "/gastos-fijos",  label: "💸 Gastos fijos" },
   { href: "/ingresos",      label: "💰 Ingresos" },
+  { href: "/insights",      label: "💡 Insights" },
   { href: "/categories",    label: "🏷️ Categorías" },
   { href: "/settings",      label: "⚙️ Configuración" },
 ];
