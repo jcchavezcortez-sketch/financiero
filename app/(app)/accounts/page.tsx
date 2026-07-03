@@ -35,8 +35,8 @@ import { formatCurrency } from "@/lib/utils";
 import {
   getAccounts,
   insertAccount,
-  insertCreditCard,
   deleteAccount,
+  updateAccount,
   getLiabilities,
   insertLiability,
   updateLiability,
@@ -49,7 +49,6 @@ import {
   getNetWorth,
 } from "@/lib/finance";
 import type { Account, Liability } from "@/types";
-import { CARD_NETWORKS } from "@/types";
 import type { Database } from "@/types/database";
 
 type AccountRow = Database["public"]["Tables"]["accounts"]["Row"];
@@ -62,13 +61,12 @@ const addAccountSchema = z.object({
     .string()
     .refine((v) => !isNaN(Number(v)) && Number(v) >= 0, "Monto inválido"),
   institution_name: z.string().optional(),
-  // Credit card fields (only used when type = credit_card)
-  card_network: z.string().optional(),
-  last_four_digits: z.string().optional(),
-  credit_limit: z.string().optional(),
-  statement_closing_day: z.string().optional(),
-  payment_due_day: z.string().optional(),
-  minimum_payment: z.string().optional(),
+});
+
+const editBalanceSchema = z.object({
+  balance: z
+    .string()
+    .refine((v) => !isNaN(Number(v)) && Number(v) >= 0, "Monto inválido"),
 });
 
 const addLiabilitySchema = z.object({
@@ -84,6 +82,7 @@ const addLiabilitySchema = z.object({
 });
 
 type AddAccountForm = z.infer<typeof addAccountSchema>;
+type EditBalanceForm = z.infer<typeof editBalanceSchema>;
 type AddLiabilityForm = z.infer<typeof addLiabilitySchema>;
 
 function LiabilityTypeIcon({ type }: { type: string }) {
@@ -99,6 +98,7 @@ function LiabilityTypeName({ type }: { type: string }) {
 export default function AccountsPage() {
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [showAddLiability, setShowAddLiability] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<AccountRow | null>(null);
   const [editingLiability, setEditingLiability] = useState<LiabilityRow | null>(null);
   const [accountSubmitted, setAccountSubmitted] = useState(false);
   const [liabilitySubmitted, setLiabilitySubmitted] = useState(false);
@@ -112,7 +112,9 @@ export default function AccountsPage() {
     resolver: zodResolver(addAccountSchema),
   });
 
-  const watchedAccountType = accountForm.watch("type");
+  const editBalanceForm = useForm<EditBalanceForm>({
+    resolver: zodResolver(editBalanceSchema),
+  });
 
   const liabilityForm = useForm<AddLiabilityForm>({
     resolver: zodResolver(addLiabilitySchema),
@@ -142,31 +144,17 @@ export default function AccountsPage() {
     const accountType = ACCOUNT_TYPES.find((t) => t.id === data.type);
     setAccountError(null);
     try {
-      if (data.type === "credit_card") {
-        await insertCreditCard({
-          name: data.name,
-          institution_name: data.institution_name || null,
-          card_network: data.card_network || null,
-          last_four_digits: data.last_four_digits || null,
-          credit_limit: data.credit_limit ? Number(data.credit_limit) : null,
-          current_balance: Number(data.balance),
-          statement_closing_day: data.statement_closing_day ? Number(data.statement_closing_day) : null,
-          payment_due_day: data.payment_due_day ? Number(data.payment_due_day) : null,
-          minimum_payment: data.minimum_payment ? Number(data.minimum_payment) : null,
-        });
-      } else {
-        await insertAccount({
-          name: data.name,
-          type: data.type,
-          balance: Number(data.balance),
-          initial_balance: Number(data.balance),
-          icon: accountType?.icon ?? "🏦",
-          color: "#7C3AED",
-          include_in_available_balance: accountType?.includeInAvailable ?? true,
-          include_in_net_worth: accountType?.includeInNetWorth ?? true,
-          institution_name: data.institution_name || null,
-        });
-      }
+      await insertAccount({
+        name: data.name,
+        type: data.type,
+        balance: Number(data.balance),
+        initial_balance: Number(data.balance),
+        icon: accountType?.icon ?? "🏦",
+        color: "#7C3AED",
+        include_in_available_balance: accountType?.includeInAvailable ?? true,
+        include_in_net_worth: accountType?.includeInNetWorth ?? true,
+        institution_name: data.institution_name || null,
+      });
       const updated = await getAccounts();
       setAccounts(updated);
       setAccountSubmitted(true);
@@ -234,6 +222,34 @@ export default function AccountsPage() {
   const handleDeleteAccount = async (id: string) => {
     await deleteAccount(id);
     setAccounts((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  const handleEditBalance = async (data: EditBalanceForm) => {
+    if (!editingAccount) return;
+    setAccountError(null);
+    try {
+      const newBalance = Number(data.balance);
+      await updateAccount(editingAccount.id, {
+        balance: newBalance,
+        initial_balance: editingAccount.initial_balance + (newBalance - editingAccount.balance),
+      });
+      const updated = await getAccounts();
+      setAccounts(updated);
+      setAccountSubmitted(true);
+      setTimeout(() => {
+        setEditingAccount(null);
+        setAccountSubmitted(false);
+        editBalanceForm.reset();
+      }, 1500);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Error desconocido al actualizar saldo";
+      setAccountError(message);
+    }
+  };
+
+  const openEditBalance = (account: AccountRow) => {
+    setEditingAccount(account);
+    editBalanceForm.reset({ balance: String(account.balance) });
   };
 
   const openEditLiability = (l: LiabilityRow) => {
@@ -327,12 +343,20 @@ export default function AccountsPage() {
               {accounts.map((account) => (
                 <div key={account.id} className="relative group">
                   <AccountCard account={account as unknown as Account} />
-                  <button
-                    onClick={() => handleDeleteAccount(account.id)}
-                    className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-rose-50 text-zinc-400 hover:text-rose-500"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
+                  <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => openEditBalance(account)}
+                      className="p-1.5 rounded-lg hover:bg-blue-50 text-zinc-400 hover:text-blue-500"
+                    >
+                      <Pencil className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteAccount(account.id)}
+                      className="p-1.5 rounded-lg hover:bg-rose-50 text-zinc-400 hover:text-rose-500"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -558,7 +582,7 @@ export default function AccountsPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label>{watchedAccountType === "credit_card" ? "Deuda actual" : "Saldo actual"}</Label>
+                  <Label>Saldo actual</Label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 font-semibold text-sm">
                       S/
@@ -584,58 +608,6 @@ export default function AccountsPage() {
                     {...accountForm.register("institution_name")}
                   />
                 </div>
-
-                {watchedAccountType === "credit_card" && (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label>Red</Label>
-                        <Select onValueChange={(v) => accountForm.setValue("card_network", v)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sin especificar" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {CARD_NETWORKS.map((n) => (
-                              <SelectItem key={n} value={n}>{n}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Últimos 4 dígitos</Label>
-                        <Input
-                          placeholder="1234"
-                          maxLength={4}
-                          {...accountForm.register("last_four_digits")}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Línea de crédito</Label>
-                      <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 font-semibold text-sm">S/</span>
-                        <Input type="number" placeholder="5000" className="pl-10" {...accountForm.register("credit_limit")} />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label>Día de cierre</Label>
-                        <Input type="number" min={1} max={31} placeholder="15" {...accountForm.register("statement_closing_day")} />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Día de pago</Label>
-                        <Input type="number" min={1} max={31} placeholder="25" {...accountForm.register("payment_due_day")} />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Pago mínimo (opcional)</Label>
-                      <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 font-semibold text-sm">S/</span>
-                        <Input type="number" placeholder="0.00" className="pl-10" {...accountForm.register("minimum_payment")} />
-                      </div>
-                    </div>
-                  </>
-                )}
               </div>
               <SheetFooter>
                 <Button
@@ -651,6 +623,75 @@ export default function AccountsPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Dialog: Editar saldo de cuenta */}
+      <Dialog
+        open={!!editingAccount}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingAccount(null);
+            setAccountSubmitted(false);
+            setAccountError(null);
+            editBalanceForm.reset();
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar saldo</DialogTitle>
+          </DialogHeader>
+
+          {accountSubmitted ? (
+            <div className="flex flex-col items-center py-8">
+              <div className="text-4xl mb-3">✅</div>
+              <p className="font-semibold text-zinc-800">¡Saldo actualizado!</p>
+            </div>
+          ) : (
+            <>
+              {accountError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg mb-4">
+                  <p className="text-sm text-rose-600 font-medium">{accountError}</p>
+                </div>
+              )}
+              {editingAccount && (
+                <div className="space-y-4 pb-2">
+                  <div>
+                    <p className="text-sm font-medium text-zinc-600 mb-2">Cuenta</p>
+                    <p className="text-base font-semibold text-zinc-800">{editingAccount.name}</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Nuevo saldo</Label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 font-semibold text-sm">
+                        S/
+                      </span>
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        className="pl-10"
+                        {...editBalanceForm.register("balance")}
+                      />
+                    </div>
+                    {editBalanceForm.formState.errors.balance && (
+                      <p className="text-xs text-rose-500">
+                        {editBalanceForm.formState.errors.balance.message}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    onClick={editBalanceForm.handleSubmit(handleEditBalance)}
+                    disabled={editBalanceForm.formState.isSubmitting}
+                  >
+                    {editBalanceForm.formState.isSubmitting ? "Guardando..." : "Guardar cambios"}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog: Agregar / Editar deuda */}
       <Dialog

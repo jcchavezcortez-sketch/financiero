@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Home, List, PlusCircle, CreditCard, CalendarClock, Settings, Menu } from "lucide-react";
+import { Home, List, PlusCircle, CreditCard, CalendarClock, TrendingUp, Settings, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Sheet,
@@ -22,10 +22,12 @@ const navItems = [
 ];
 
 const moreItems = [
-  { href: "/budgets",    label: "📊 Presupuestos" },
-  { href: "/ingresos",   label: "💰 Ingresos" },
-  { href: "/categories", label: "🏷️ Categorías" },
-  { href: "/settings",   label: "⚙️ Configuración" },
+  { href: "/balance",       label: "📈 Saldo por mes" },
+  { href: "/budgets",       label: "📊 Presupuestos" },
+  { href: "/gastos-fijos",  label: "💸 Gastos fijos" },
+  { href: "/ingresos",      label: "💰 Ingresos" },
+  { href: "/categories",    label: "🏷️ Categorías" },
+  { href: "/settings",      label: "⚙️ Configuración" },
 ];
 
 export default function BottomNav() {

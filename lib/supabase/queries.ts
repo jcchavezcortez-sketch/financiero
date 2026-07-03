@@ -106,7 +106,7 @@ export async function insertAccount(values: {
 export async function updateAccount(
   id: string,
   values: Partial<{
-    name: string; type: string; balance: number; currency: string; color: string; icon: string;
+    name: string; type: string; balance: number; initial_balance: number; currency: string; color: string; icon: string;
     include_in_available_balance: boolean; include_in_net_worth: boolean; institution_name: string | null;
   }>
 ) {

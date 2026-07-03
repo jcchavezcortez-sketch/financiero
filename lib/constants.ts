@@ -68,13 +68,6 @@ export const ACCOUNT_TYPES = [
     includeInNetWorth: true,
   },
   {
-    id: "credit_card",
-    name: "Tarjeta de crédito",
-    icon: "💳",
-    includeInAvailable: false,
-    includeInNetWorth: false,
-  },
-  {
     id: "other",
     name: "Otra cuenta",
     icon: "🏛️",
