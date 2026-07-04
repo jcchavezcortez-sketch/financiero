@@ -78,7 +78,6 @@ export default function InsightsPage() {
   const diff = (curSummary?.totalExpenses ?? 0) - prevExpenses;
   const isMoreExpensive = diff > 0;
 
-  const topCategories = curSummary?.categoryBreakdown.slice(0, 3) ?? [];
 
   // Dynamic insights from real data
   const dynamicInsights = [];
@@ -301,36 +300,51 @@ export default function InsightsPage() {
             </div>
           )}
 
-          {/* Top categorías */}
-          {topCategories.length > 0 && (
+          {/* Gastos por categoría */}
+          {curSummary!.categoryBreakdown.length > 0 && (
             <div className="px-5 mb-6">
               <h2 className="text-base font-semibold text-zinc-700 mb-3">
-                Top categorías del mes
+                Gastos por categoría
               </h2>
-              <div className="space-y-2">
-                {topCategories.map((cat, i) => (
-                  <div
-                    key={cat.categoryId}
-                    className="flex items-center gap-3 bg-white rounded-2xl p-3 border border-zinc-100"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-sm font-bold text-zinc-500">
-                      {i + 1}
-                    </div>
-                    <span className="text-xl">{cat.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-zinc-800">{cat.name}</p>
-                      <p className="text-xs text-zinc-400">
-                        {cat.count} movimiento{cat.count !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                    <p
-                      className="text-sm font-bold shrink-0"
-                      style={{ color: cat.color }}
-                    >
-                      {formatCurrency(cat.total)}
-                    </p>
-                  </div>
-                ))}
+              <div className="bg-white rounded-2xl border border-zinc-100 p-4 space-y-3">
+                {(() => {
+                  const breakdown = curSummary!.categoryBreakdown;
+                  const grandTotal = breakdown.reduce((s, c) => s + c.total, 0);
+                  const maxTotal = Math.max(...breakdown.map((c) => c.total));
+                  return breakdown.map((cat) => {
+                    const pct = grandTotal > 0 ? (cat.total / grandTotal) * 100 : 0;
+                    const barPct = maxTotal > 0 ? (cat.total / maxTotal) * 100 : 0;
+                    return (
+                      <div key={cat.categoryId}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-base shrink-0">{cat.icon}</span>
+                            <p className="text-sm font-medium text-zinc-800 truncate">
+                              {cat.name}
+                            </p>
+                            <p className="text-xs text-zinc-400 shrink-0">
+                              {cat.count} mov.
+                            </p>
+                          </div>
+                          <div className="flex items-baseline gap-2 shrink-0">
+                            <p className="text-sm font-bold text-zinc-800">
+                              {formatCurrency(cat.total)}
+                            </p>
+                            <p className="text-xs text-zinc-400 w-10 text-right">
+                              {pct.toFixed(0)}%
+                            </p>
+                          </div>
+                        </div>
+                        <div className="h-2 bg-zinc-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${barPct}%`, backgroundColor: cat.color }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}
