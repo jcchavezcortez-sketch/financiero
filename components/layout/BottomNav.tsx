@@ -106,19 +106,19 @@ export default function BottomNav() {
 
       {/* More menu sheet */}
       <Sheet open={showMenu} onOpenChange={setShowMenu}>
-        <SheetContent side="bottom" className="max-h-[50vh]">
+        <SheetContent side="bottom" className="max-h-[85vh] flex flex-col">
           <SheetHeader>
             <SheetTitle>Más opciones</SheetTitle>
           </SheetHeader>
-          <div className="grid grid-cols-2 gap-3 mt-6">
+          <div className="grid grid-cols-2 gap-3 mt-4 overflow-y-auto pb-6 px-1">
             {moreItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setShowMenu(false)}
               >
-                <Button variant="outline" className="w-full h-20 flex flex-col gap-2">
-                  <span className="text-2xl">{item.label.split(" ")[0]}</span>
+                <Button variant="outline" className="w-full h-16 flex flex-col gap-1">
+                  <span className="text-xl">{item.label.split(" ")[0]}</span>
                   <span className="text-xs">{item.label.split(" ").slice(1).join(" ")}</span>
                 </Button>
               </Link>
