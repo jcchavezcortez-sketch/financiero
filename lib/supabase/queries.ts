@@ -536,9 +536,16 @@ export async function registerLiabilityPayment(values: {
   return { newBalance, newStatus };
 }
 
-export async function markLiabilityPaid(id: string) {
+// Settle a debt without a money movement. Keeps the settled amount in
+// original_amount so the record of how much it was survives.
+export async function markLiabilityPaid(id: string, settledAmount?: number) {
   const supabase = createClient();
-  return supabase.from("liabilities").update({ current_balance: 0, status: "paid" }).eq("id", id);
+  const values: { current_balance: number; status: string; original_amount?: number } = {
+    current_balance: 0,
+    status: "paid",
+  };
+  if (settledAmount != null && settledAmount > 0) values.original_amount = settledAmount;
+  return supabase.from("liabilities").update(values).eq("id", id);
 }
 
 // ── Credit card helpers ───────────────────────────────────────────────────────

@@ -372,10 +372,44 @@ export default function DeudasPage() {
     setLiabilities((prev) => prev.filter((l) => l.id !== id));
   }
 
-  async function handleMarkPaid(l: Liability) {
-    if (!confirm(`¿Marcar "${l.name}" como pagada?`)) return;
-    await markLiabilityPaid(l.id);
-    setLiabilities((prev) => prev.map((x) => x.id === l.id ? { ...x, current_balance: 0, status: "paid" } : x));
+  // "Marcar pagada" used to just zero the balance: the amount was lost, no
+  // payment was recorded and no money left any account. Cancel the remaining
+  // balance through the regular payment flow so it shows up in Movimientos,
+  // in the payment history, and actually deducts from the chosen account.
+  function handleMarkPaid(l: Liability) {
+    setPayingLiability(l);
+    setPaymentError(null);
+    paymentForm.reset({
+      account_id: "",
+      amount: String(l.current_balance),
+      payment_date: today,
+      notes: "Cancelación total de la deuda",
+    });
+    setSubmitted(false);
+    setShowPayment(true);
+  }
+
+  // Escape hatch: the debt was settled outside the app, so there is no money
+  // movement to record. Keep the amount in original_amount so the history of
+  // how much it was is never destroyed.
+  async function handleSettleWithoutPayment(l: Liability) {
+    if (
+      !confirm(
+        `¿Marcar "${l.name}" como pagada sin registrar movimiento?\n\nNo se descontará dinero de ninguna cuenta ni aparecerá en Movimientos. Úsalo solo si la pagaste fuera de la app.`
+      )
+    )
+      return;
+    try {
+      const { error } = await markLiabilityPaid(l.id, l.original_amount ?? l.current_balance);
+      if (error) throw new Error(error.message);
+      await load();
+    } catch (e: unknown) {
+      alert(
+        e instanceof Error
+          ? `No se pudo marcar como pagada: ${e.message}`
+          : "No se pudo marcar como pagada."
+      );
+    }
   }
 
   function openPayment(l: Liability) {
@@ -596,6 +630,7 @@ export default function DeudasPage() {
             onEdit={openEdit}
             onDelete={handleDelete}
             onMarkPaid={handleMarkPaid}
+            onSettleWithoutPayment={handleSettleWithoutPayment}
             onPayment={openPayment}
             onHistory={openHistory}
             emptyText="No tienes deudas personales registradas"
@@ -614,6 +649,7 @@ export default function DeudasPage() {
             onEdit={openEdit}
             onDelete={handleDelete}
             onMarkPaid={handleMarkPaid}
+            onSettleWithoutPayment={handleSettleWithoutPayment}
             onPayment={openPayment}
             onHistory={openHistory}
             emptyText="No tienes préstamos registrados"
@@ -632,6 +668,7 @@ export default function DeudasPage() {
             onEdit={openEdit}
             onDelete={handleDelete}
             onMarkPaid={handleMarkPaid}
+            onSettleWithoutPayment={handleSettleWithoutPayment}
             onPayment={openPayment}
             onHistory={openHistory}
             emptyText="No tienes otras deudas registradas"
@@ -1048,7 +1085,7 @@ export default function DeudasPage() {
 // ── LiabilityTab (reusable for Personas / Préstamos / Otras) ─────────────────
 
 function LiabilityTab({
-  items, expandedIds, toggleExpand, onAdd, onEdit, onDelete, onMarkPaid, onPayment, onHistory, emptyText, addLabel,
+  items, expandedIds, toggleExpand, onAdd, onEdit, onDelete, onMarkPaid, onSettleWithoutPayment, onPayment, onHistory, emptyText, addLabel,
 }: {
   items: Liability[];
   allItems: Liability[];
@@ -1058,6 +1095,7 @@ function LiabilityTab({
   onEdit: (l: Liability) => void;
   onDelete: (id: string) => void;
   onMarkPaid: (l: Liability) => void;
+  onSettleWithoutPayment: (l: Liability) => void;
   onPayment: (l: Liability) => void;
   onHistory: (l: Liability) => void;
   emptyText: string;
@@ -1121,13 +1159,16 @@ function LiabilityTab({
                       <CreditCard className="size-3.5" />Registrar pago
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => onMarkPaid(l)} className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 text-xs">
-                      <CheckCircle className="size-3.5" />Marcar pagada
+                      <CheckCircle className="size-3.5" />Cancelar total
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => onHistory(l)} className="gap-1.5 text-xs">
                       <History className="size-3.5" />Ver pagos
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => onEdit(l)} className="gap-1.5 text-xs">
                       <Pencil className="size-3.5" />Editar
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => onSettleWithoutPayment(l)} className="gap-1.5 text-zinc-500 text-xs col-span-2">
+                      <CheckCircle className="size-3.5" />Marcar pagada sin movimiento
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => onDelete(l.id)} className="gap-1.5 text-rose-500 border-rose-200 hover:bg-rose-50 text-xs col-span-2">
                       <Trash2 className="size-3.5" />Eliminar
@@ -1144,10 +1185,19 @@ function LiabilityTab({
               {paid.map((l) => (
                 <div key={l.id} className="bg-zinc-50 rounded-2xl border border-zinc-100 p-4 opacity-60">
                   <div className="flex items-center justify-between">
-                    <p className="font-medium text-zinc-600 line-through">{l.name}</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-zinc-400 line-through">{formatCurrency(l.current_balance)}</span>
-                      <button onClick={() => onDelete(l.id)} className="p-1 text-zinc-300 hover:text-rose-400">
+                    <div className="min-w-0">
+                      <p className="font-medium text-zinc-600 line-through truncate">{l.name}</p>
+                      <p className="text-[10px] text-zinc-400 mt-0.5">Pagada</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {/* Show what the debt was, not the zeroed balance */}
+                      <span className="text-sm text-zinc-400">
+                        {formatCurrency(l.original_amount ?? l.current_balance)}
+                      </span>
+                      <button onClick={() => onHistory(l)} className="p-1 text-zinc-300 hover:text-zinc-500" aria-label="Ver pagos">
+                        <History className="size-3.5" />
+                      </button>
+                      <button onClick={() => onDelete(l.id)} className="p-1 text-zinc-300 hover:text-rose-400" aria-label="Eliminar">
                         <Trash2 className="size-3.5" />
                       </button>
                     </div>
