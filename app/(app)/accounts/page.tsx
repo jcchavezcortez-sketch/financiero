@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus, Pencil, Trash2, ChevronRight, CreditCard } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronRight, ChevronDown, ChevronUp, CreditCard } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -29,7 +29,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import AccountCard from "@/components/shared/AccountCard";
 import { ACCOUNT_TYPES } from "@/lib/constants";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -68,6 +67,7 @@ type EditAccountForm = z.infer<typeof editAccountSchema>;
 export default function AccountsPage() {
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [editingAccount, setEditingAccount] = useState<AccountRow | null>(null);
+  const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
   const [accountSubmitted, setAccountSubmitted] = useState(false);
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [liabilities, setLiabilities] = useState<LiabilityRow[]>([]);
@@ -257,28 +257,79 @@ export default function AccountsPage() {
           </div>
         ) : (
           <div className="space-y-3 mb-6">
-            {accounts.map((account) => (
-              <div key={account.id} className="relative">
-                <AccountCard account={account as unknown as Account} />
-                {/* Always visible: hover does not exist on touch devices */}
-                <div className="absolute top-2 right-2 flex gap-1">
-                  <button
-                    aria-label={`Editar ${account.name}`}
-                    onClick={() => openEditAccount(account)}
-                    className="p-2 rounded-lg bg-white/80 hover:bg-blue-50 text-zinc-400 hover:text-blue-500"
-                  >
-                    <Pencil className="size-4" />
-                  </button>
-                  <button
-                    aria-label={`Eliminar ${account.name}`}
-                    onClick={() => handleDeleteAccount(account.id)}
-                    className="p-2 rounded-lg bg-white/80 hover:bg-rose-50 text-zinc-400 hover:text-rose-500"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
+            {accounts.map((account) => {
+              const accountType = ACCOUNT_TYPES.find((t) => t.id === account.type);
+              const isExpanded = expandedAccount === account.id;
+              return (
+                <div
+                  key={account.id}
+                  className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden"
+                >
+                  <div className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-1 h-12 rounded-full shrink-0"
+                        style={{ backgroundColor: account.color }}
+                      />
+                      <div
+                        className="flex items-center justify-center w-12 h-12 rounded-xl shrink-0 text-2xl"
+                        style={{ backgroundColor: `${account.color}20` }}
+                      >
+                        {account.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-zinc-800 truncate">{account.name}</p>
+                        <p className="text-xs text-zinc-400 mt-0.5 truncate">
+                          {accountType?.name ?? account.type}
+                          {account.institution_name ? ` · ${account.institution_name}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <p className="text-base font-bold text-zinc-800">
+                          {formatCurrency(account.balance, account.currency)}
+                        </p>
+                        <button
+                          aria-label={isExpanded ? "Ocultar acciones" : "Ver acciones"}
+                          onClick={() =>
+                            setExpandedAccount(isExpanded ? null : account.id)
+                          }
+                          className="p-1 text-zinc-400 hover:text-zinc-600"
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="size-4" />
+                          ) : (
+                            <ChevronDown className="size-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="border-t border-zinc-50 bg-zinc-50 px-4 py-3 grid grid-cols-2 gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openEditAccount(account)}
+                        className="gap-1.5 text-xs"
+                      >
+                        <Pencil className="size-3.5" />
+                        Editar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDeleteAccount(account.id)}
+                        className="gap-1.5 text-rose-500 border-rose-200 hover:bg-rose-50 text-xs"
+                      >
+                        <Trash2 className="size-3.5" />
+                        Eliminar
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
