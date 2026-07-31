@@ -40,18 +40,20 @@ export default function TransactionsPage() {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Accounts and categories don't change when the month does — fetch them once.
   useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      getTransactions({ month: currentMonth.getMonth(), year: currentMonth.getFullYear() }),
-      getAccounts(),
-      getCategories(),
-    ])
-      .then(([txs, accs, cats]) => {
-        setRawTransactions(txs);
+    Promise.all([getAccounts(), getCategories()])
+      .then(([accs, cats]) => {
         setAccounts(accs);
         setCategories(cats);
       })
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    getTransactions({ month: currentMonth.getMonth(), year: currentMonth.getFullYear() })
+      .then(setRawTransactions)
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [currentMonth]);

@@ -25,6 +25,32 @@ type LiabilityRow = Database["public"]["Tables"]["liabilities"]["Row"];
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
+// Every query below needs the current user. auth.getUser() hits the network on
+// each call, so a page doing 3 parallel queries paid 3 extra round-trips before
+// any data was fetched. Cache the in-flight/resolved user for the session; RLS
+// on the server remains the actual access gate.
+let cachedUserPromise: Promise<{ id: string } | null> | null = null;
+
+function getAuthUser(): Promise<{ id: string } | null> {
+  if (!cachedUserPromise) {
+    const supabase = createClient();
+    cachedUserPromise = supabase.auth
+      .getUser()
+      .then(({ data }) => (data.user ? { id: data.user.id } : null))
+      .catch(() => null);
+    // Never cache a failed/empty lookup — retry on the next call instead.
+    cachedUserPromise = cachedUserPromise.then((u) => {
+      if (!u) cachedUserPromise = null;
+      return u;
+    });
+  }
+  return cachedUserPromise;
+}
+
+export function clearUserCache() {
+  cachedUserPromise = null;
+}
+
 export async function getCurrentUser() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -33,6 +59,7 @@ export async function getCurrentUser() {
 
 export async function signOut() {
   const supabase = createClient();
+  clearUserCache();
   await supabase.auth.signOut();
 }
 
@@ -40,7 +67,7 @@ export async function signOut() {
 
 export async function getProfile(): Promise<ProfileRow | null> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return null;
   const { data } = await supabase.from("profiles").select("*").eq("user_id", user.id).single();
   return data;
@@ -48,7 +75,7 @@ export async function getProfile(): Promise<ProfileRow | null> {
 
 export async function upsertProfile(values: { name: string; currency?: string; payday?: number | null }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
   return supabase.from("profiles").upsert({ user_id: user.id, ...values });
 }
@@ -57,7 +84,7 @@ export async function upsertProfile(values: { name: string; currency?: string; p
 
 export async function getUserSettings(): Promise<UserSettingsRow | null> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return null;
   const { data } = await supabase.from("user_settings").select("*").eq("user_id", user.id).single();
   return data;
@@ -65,7 +92,7 @@ export async function getUserSettings(): Promise<UserSettingsRow | null> {
 
 export async function upsertUserSettings(values: { monthly_income?: number | null; savings_goal?: number | null }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
   return supabase.from("user_settings").upsert({ user_id: user.id, ...values });
 }
@@ -74,7 +101,7 @@ export async function upsertUserSettings(values: { monthly_income?: number | nul
 
 export async function getAccounts(): Promise<AccountRow[]> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return [];
   const { data } = await supabase
     .from("accounts").select("*").eq("user_id", user.id).eq("is_active", true).order("created_at");
@@ -94,7 +121,7 @@ export async function insertAccount(values: {
   institution_name?: string | null;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
   return supabase.from("accounts").insert({
     user_id: user.id,
@@ -123,7 +150,7 @@ export async function deleteAccount(id: string) {
 
 export async function getLiabilities(status?: "active" | "paid"): Promise<LiabilityRow[]> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return [];
   let query = supabase.from("liabilities").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
   if (status) query = query.eq("status", status);
@@ -142,7 +169,7 @@ export async function insertLiability(values: {
   notes?: string | null;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
   return supabase.from("liabilities").insert({ user_id: user.id, ...values });
 }
@@ -174,7 +201,7 @@ export async function insertFinancialSnapshot(values: {
   notes?: string | null;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
   return supabase.from("financial_snapshots").insert({ user_id: user.id, ...values });
 }
@@ -193,7 +220,7 @@ export async function getFinancialOverviewData(): Promise<{
 
 export async function getCategories(type?: "expense" | "income"): Promise<CategoryRow[]> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return [];
   let query = supabase.from("categories").select("*").eq("user_id", user.id).order("is_custom").order("name");
   if (type) query = query.or(`type.eq.${type},type.eq.both`);
@@ -203,14 +230,14 @@ export async function getCategories(type?: "expense" | "income"): Promise<Catego
 
 export async function insertCategory(values: { name: string; icon?: string; color?: string; type: "expense" | "income" }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
   return supabase.from("categories").insert({ user_id: user.id, is_custom: true, ...values });
 }
 
 export async function seedDefaultCategories() {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return;
   await supabase.rpc("seed_default_categories", { p_user_id: user.id });
 }
@@ -231,19 +258,22 @@ export async function getTransactions(filters?: {
   search?: string;
 }): Promise<TransactionWithRefs[]> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return [];
 
   let query = supabase
     .from("transactions")
-    .select("*, category:categories(name, icon, color), account:accounts(name, icon)")
+    // transactions has 3 FKs to accounts (account_id, from_account_id, to_account_id),
+    // so the embed must name the constraint explicitly or PostgREST errors as ambiguous.
+    .select("*, category:categories(name, icon, color), account:accounts!transactions_account_id_fkey(name, icon)")
     .eq("user_id", user.id)
     .order("date", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (filters?.month !== undefined && filters?.year !== undefined) {
     const start = `${filters.year}-${String(filters.month + 1).padStart(2, "0")}-01`;
-    const end = new Date(filters.year, filters.month + 1, 0).toISOString().split("T")[0];
+    const lastDay = new Date(filters.year, filters.month + 1, 0).getDate();
+    const end = `${filters.year}-${String(filters.month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
     query = query.gte("date", start).lte("date", end);
   }
   if (filters?.categoryId) query = query.eq("category_id", filters.categoryId);
@@ -251,7 +281,43 @@ export async function getTransactions(filters?: {
   if (filters?.movementType) query = query.eq("movement_type", filters.movementType);
   if (filters?.search) query = query.ilike("description", `%${filters.search}%`);
 
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) {
+    // Fall back to a plain select and join client-side, so a schema/embed issue
+    // never silently hides the user's movements.
+    const [plain, cats, accs] = await Promise.all([
+      (async () => {
+        let q = supabase
+          .from("transactions")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("date", { ascending: false })
+          .order("created_at", { ascending: false });
+        if (filters?.month !== undefined && filters?.year !== undefined) {
+          const start = `${filters.year}-${String(filters.month + 1).padStart(2, "0")}-01`;
+          const lastDay = new Date(filters.year, filters.month + 1, 0).getDate();
+          const end = `${filters.year}-${String(filters.month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+          q = q.gte("date", start).lte("date", end);
+        }
+        if (filters?.categoryId) q = q.eq("category_id", filters.categoryId);
+        if (filters?.accountId) q = q.eq("account_id", filters.accountId);
+        if (filters?.movementType) q = q.eq("movement_type", filters.movementType);
+        if (filters?.search) q = q.ilike("description", `%${filters.search}%`);
+        const { data } = await q;
+        return data ?? [];
+      })(),
+      supabase.from("categories").select("id, name, icon, color").eq("user_id", user.id),
+      supabase.from("accounts").select("id, name, icon").eq("user_id", user.id),
+    ]);
+
+    const catById = new Map((cats.data ?? []).map((c) => [c.id, c]));
+    const accById = new Map((accs.data ?? []).map((a) => [a.id, a]));
+    return plain.map((t) => ({
+      ...t,
+      category: t.category_id ? catById.get(t.category_id) ?? null : null,
+      account: accById.get(t.account_id) ?? null,
+    })) as unknown as TransactionWithRefs[];
+  }
   return (data ?? []) as unknown as TransactionWithRefs[];
 }
 
@@ -294,7 +360,7 @@ export async function createIncome(values: {
   currency?: string;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { error } = await supabase.from("transactions").insert({
@@ -332,7 +398,7 @@ export async function createExpense(values: {
   currency?: string;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { error } = await supabase.from("transactions").insert({
@@ -369,7 +435,7 @@ export async function createTransfer(values: {
   notes?: string;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
   if (values.from_account_id === values.to_account_id) throw new Error("Las cuentas origen y destino deben ser distintas");
 
@@ -420,7 +486,7 @@ export async function registerLiabilityPayment(values: {
   current_balance: number;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const categoryId = await getOrCreateDebtCategory(user.id, supabase);
@@ -479,7 +545,7 @@ export async function markLiabilityPaid(id: string) {
 
 export async function getCreditCards(): Promise<CreditCardWithLiability[]> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return [];
 
   const [{ data: accounts }, { data: liabilities }] = await Promise.all([
@@ -523,7 +589,7 @@ export async function insertCreditCard(values: {
   notes?: string | null;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { data: account, error: accErr } = await supabase.from("accounts").insert({
@@ -617,7 +683,7 @@ export async function deleteCreditCard(accountId: string, liabilityId: string | 
 
 export async function getCreditCardSummary(month: number, year: number) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return { totalDebt: 0, activeCount: 0, purchases: 0, payments: 0, cards: [] as CreditCardWithLiability[] };
 
   const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
@@ -649,7 +715,7 @@ export async function createCreditCardPurchase(values: {
   credit_card_account_id?: string;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   // Use the linked credit card account if provided, otherwise fall back to liability's linked account
@@ -702,7 +768,7 @@ export async function createBalanceAdjustment(values: {
   date: string;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const current = await fetchBalance(supabase, values.account_id);
@@ -739,7 +805,7 @@ export async function createSavingsAllocation(values: {
   notes?: string;
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
   if (values.from_account_id === values.to_account_id) throw new Error("Las cuentas deben ser distintas");
 
@@ -770,7 +836,7 @@ export async function createSavingsAllocation(values: {
 
 export async function getLiabilityPayments(liabilityId: string) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return [];
   const { data } = await supabase
     .from("liability_payments")
@@ -796,7 +862,7 @@ export async function insertTransaction(values: {
   source?: "manual" | "voice" | "file_import";
 }) {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
   const isIncome = values.type === "income";
   return supabase.from("transactions").insert({
@@ -882,7 +948,7 @@ export function toPeriodMonth(date: Date): string {
 
 export async function getMonthlyCommitments(): Promise<MonthlyCommitment[]> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return [];
   const { data } = await supabase
     .from("monthly_commitments")
@@ -906,7 +972,7 @@ export async function insertMonthlyCommitment(values: {
   notes?: string | null;
 }): Promise<void> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
   const { error } = await supabase.from("monthly_commitments").insert({
     user_id: user.id,
@@ -963,7 +1029,7 @@ export async function deleteOrDeactivateMonthlyCommitment(id: string): Promise<v
 
 export async function getCommitmentLogs(periodMonth: string): Promise<CommitmentMonthLog[]> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return [];
   const { data } = await supabase
     .from("commitment_month_logs")
@@ -1028,7 +1094,7 @@ export async function markCommitmentAsPaid(params: {
   notes?: string;
 }): Promise<void> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
   if (params.paidAmount <= 0) throw new Error("El monto debe ser mayor a 0");
 
@@ -1165,7 +1231,7 @@ export async function markCommitmentAsSkipped(params: {
   notes?: string;
 }): Promise<void> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { data: existing } = await supabase
@@ -1269,7 +1335,7 @@ export async function getFreeCashFlowSummary(periodMonth: string): Promise<FreeC
 
 export async function deleteAllUserData(): Promise<void> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { error } = await supabase.rpc("delete_all_user_data");
@@ -1285,7 +1351,7 @@ export async function getCategoryBudgets(): Promise<
   Database["public"]["Tables"]["category_budgets"]["Row"][]
 > {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { data, error } = await supabase
@@ -1306,7 +1372,7 @@ export async function upsertCategoryBudget(payload: {
   notes?: string | null;
 }): Promise<Database["public"]["Tables"]["category_budgets"]["Row"]> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { data, error } = await supabase
@@ -1327,7 +1393,7 @@ export async function upsertCategoryBudget(payload: {
 
 export async function deleteCategoryBudget(budgetId: string): Promise<void> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { error } = await supabase
@@ -1349,7 +1415,7 @@ export async function getCategoryBudgetSpending(
   is_over_budget: boolean;
 } | null> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { data, error } = await supabase.rpc("get_category_budget_spending", {
@@ -1369,7 +1435,7 @@ export async function getMonthlyIncomeSources(): Promise<
   Database["public"]["Tables"]["monthly_income_sources"]["Row"][]
 > {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { data, error } = await supabase
@@ -1393,7 +1459,7 @@ export async function upsertMonthlyIncomeSource(payload: {
   notes?: string | null;
 }): Promise<Database["public"]["Tables"]["monthly_income_sources"]["Row"]> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { data, error } = await supabase
@@ -1423,7 +1489,7 @@ export async function updateMonthlyIncomeSource(
   }>
 ): Promise<Database["public"]["Tables"]["monthly_income_sources"]["Row"]> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { data, error } = await supabase
@@ -1440,7 +1506,7 @@ export async function updateMonthlyIncomeSource(
 
 export async function deleteMonthlyIncomeSource(sourceId: string): Promise<void> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { error } = await supabase
@@ -1456,7 +1522,7 @@ export async function getMonthlyIncomeLogs(periodMonth?: string): Promise<
   Database["public"]["Tables"]["monthly_income_logs"]["Row"][]
 > {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   let query = supabase
@@ -1481,7 +1547,7 @@ export async function markIncomeAsReceived(
   transactionId?: string | null
 ): Promise<Database["public"]["Tables"]["monthly_income_logs"]["Row"]> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { data, error } = await supabase
@@ -1507,7 +1573,7 @@ export async function getMonthlyIncomeSummary(): Promise<{
   pending_total: number;
 }> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) throw new Error("No autenticado");
 
   const { data, error } = await supabase.rpc("get_monthly_income_summary");

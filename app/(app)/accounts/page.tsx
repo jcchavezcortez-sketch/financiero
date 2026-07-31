@@ -60,14 +60,10 @@ const addAccountSchema = z.object({
   institution_name: z.string().optional(),
 });
 
-const editBalanceSchema = z.object({
-  balance: z
-    .string()
-    .refine((v) => !isNaN(Number(v)) && Number(v) >= 0, "Monto inválido"),
-});
+const editAccountSchema = addAccountSchema;
 
 type AddAccountForm = z.infer<typeof addAccountSchema>;
-type EditBalanceForm = z.infer<typeof editBalanceSchema>;
+type EditAccountForm = z.infer<typeof editAccountSchema>;
 
 export default function AccountsPage() {
   const [showAddAccount, setShowAddAccount] = useState(false);
@@ -82,8 +78,8 @@ export default function AccountsPage() {
     resolver: zodResolver(addAccountSchema),
   });
 
-  const editBalanceForm = useForm<EditBalanceForm>({
-    resolver: zodResolver(editBalanceSchema),
+  const editAccountForm = useForm<EditAccountForm>({
+    resolver: zodResolver(editAccountSchema),
   });
 
   useEffect(() => {
@@ -138,32 +134,45 @@ export default function AccountsPage() {
     setAccounts((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const handleEditBalance = async (data: EditBalanceForm) => {
+  const handleEditAccount = async (data: EditAccountForm) => {
     if (!editingAccount) return;
     setAccountError(null);
     try {
       const newBalance = Number(data.balance);
-      await updateAccount(editingAccount.id, {
+      const accountType = ACCOUNT_TYPES.find((t) => t.id === data.type);
+      const { error } = await updateAccount(editingAccount.id, {
+        name: data.name,
+        type: data.type,
         balance: newBalance,
         initial_balance: editingAccount.initial_balance + (newBalance - editingAccount.balance),
+        icon: accountType?.icon ?? editingAccount.icon,
+        include_in_available_balance: accountType?.includeInAvailable ?? true,
+        include_in_net_worth: accountType?.includeInNetWorth ?? true,
+        institution_name: data.institution_name || null,
       });
+      if (error) throw new Error(error.message);
       const updated = await getAccounts();
       setAccounts(updated);
       setAccountSubmitted(true);
       setTimeout(() => {
         setEditingAccount(null);
         setAccountSubmitted(false);
-        editBalanceForm.reset();
-      }, 1500);
+        editAccountForm.reset();
+      }, 1200);
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Error desconocido al actualizar saldo";
+      const message = e instanceof Error ? e.message : "Error desconocido al actualizar la cuenta";
       setAccountError(message);
     }
   };
 
-  const openEditBalance = (account: AccountRow) => {
+  const openEditAccount = (account: AccountRow) => {
     setEditingAccount(account);
-    editBalanceForm.reset({ balance: String(account.balance) });
+    editAccountForm.reset({
+      name: account.name,
+      type: account.type,
+      balance: String(account.balance),
+      institution_name: account.institution_name ?? "",
+    });
   };
 
   return (
@@ -249,18 +258,21 @@ export default function AccountsPage() {
         ) : (
           <div className="space-y-3 mb-6">
             {accounts.map((account) => (
-              <div key={account.id} className="relative group">
+              <div key={account.id} className="relative">
                 <AccountCard account={account as unknown as Account} />
-                <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {/* Always visible: hover does not exist on touch devices */}
+                <div className="absolute top-2 right-2 flex gap-1">
                   <button
-                    onClick={() => openEditBalance(account)}
-                    className="p-1.5 rounded-lg hover:bg-blue-50 text-zinc-400 hover:text-blue-500"
+                    aria-label={`Editar ${account.name}`}
+                    onClick={() => openEditAccount(account)}
+                    className="p-2 rounded-lg bg-white/80 hover:bg-blue-50 text-zinc-400 hover:text-blue-500"
                   >
                     <Pencil className="size-4" />
                   </button>
                   <button
+                    aria-label={`Eliminar ${account.name}`}
                     onClick={() => handleDeleteAccount(account.id)}
-                    className="p-1.5 rounded-lg hover:bg-rose-50 text-zinc-400 hover:text-rose-500"
+                    className="p-2 rounded-lg bg-white/80 hover:bg-rose-50 text-zinc-400 hover:text-rose-500"
                   >
                     <Trash2 className="size-4" />
                   </button>
@@ -381,7 +393,7 @@ export default function AccountsPage() {
         </SheetContent>
       </Sheet>
 
-      {/* Dialog: Editar saldo de cuenta */}
+      {/* Dialog: Editar cuenta */}
       <Dialog
         open={!!editingAccount}
         onOpenChange={(open) => {
@@ -389,19 +401,19 @@ export default function AccountsPage() {
             setEditingAccount(null);
             setAccountSubmitted(false);
             setAccountError(null);
-            editBalanceForm.reset();
+            editAccountForm.reset();
           }
         }}
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Editar saldo</DialogTitle>
+            <DialogTitle>Editar cuenta</DialogTitle>
           </DialogHeader>
 
           {accountSubmitted ? (
             <div className="flex flex-col items-center py-8">
               <div className="text-4xl mb-3">✅</div>
-              <p className="font-semibold text-zinc-800">¡Saldo actualizado!</p>
+              <p className="font-semibold text-zinc-800">¡Cuenta actualizada!</p>
             </div>
           ) : (
             <>
@@ -412,12 +424,44 @@ export default function AccountsPage() {
               )}
               {editingAccount && (
                 <div className="space-y-4 pb-2">
-                  <div>
-                    <p className="text-sm font-medium text-zinc-600 mb-2">Cuenta</p>
-                    <p className="text-base font-semibold text-zinc-800">{editingAccount.name}</p>
-                  </div>
                   <div className="space-y-1.5">
-                    <Label>Nuevo saldo</Label>
+                    <Label>Nombre</Label>
+                    <Input {...editAccountForm.register("name")} />
+                    {editAccountForm.formState.errors.name && (
+                      <p className="text-xs text-rose-500">
+                        {editAccountForm.formState.errors.name.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Tipo de cuenta</Label>
+                    <Select
+                      value={editAccountForm.watch("type")}
+                      onValueChange={(v) =>
+                        editAccountForm.setValue("type", v, { shouldValidate: true })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona el tipo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ACCOUNT_TYPES.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.icon} {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {editAccountForm.formState.errors.type && (
+                      <p className="text-xs text-rose-500">
+                        {editAccountForm.formState.errors.type.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Saldo actual</Label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 font-semibold text-sm">
                         S/
@@ -426,22 +470,28 @@ export default function AccountsPage() {
                         type="number"
                         placeholder="0.00"
                         className="pl-10"
-                        {...editBalanceForm.register("balance")}
+                        {...editAccountForm.register("balance")}
                       />
                     </div>
-                    {editBalanceForm.formState.errors.balance && (
+                    {editAccountForm.formState.errors.balance && (
                       <p className="text-xs text-rose-500">
-                        {editBalanceForm.formState.errors.balance.message}
+                        {editAccountForm.formState.errors.balance.message}
                       </p>
                     )}
                   </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Banco / institución (opcional)</Label>
+                    <Input {...editAccountForm.register("institution_name")} />
+                  </div>
+
                   <Button
                     className="w-full"
                     size="lg"
-                    onClick={editBalanceForm.handleSubmit(handleEditBalance)}
-                    disabled={editBalanceForm.formState.isSubmitting}
+                    onClick={editAccountForm.handleSubmit(handleEditAccount)}
+                    disabled={editAccountForm.formState.isSubmitting}
                   >
-                    {editBalanceForm.formState.isSubmitting ? "Guardando..." : "Guardar cambios"}
+                    {editAccountForm.formState.isSubmitting ? "Guardando..." : "Guardar cambios"}
                   </Button>
                 </div>
               )}
